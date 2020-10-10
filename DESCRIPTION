@@ -14,9 +14,13 @@ URL: https://github.com/topepo/tidyAPM
 Imports:
   AppliedPredictiveModeling,
   conflicted,
+  corrplot,
+  e1071,
   earth,
+  ggforce,
   knitr,
   patchwork,
+  QSARdata,
   sessioninfo,
   tidymodels,
 License: MIT + file LICENSE

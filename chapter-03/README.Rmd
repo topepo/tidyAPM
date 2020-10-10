@@ -1,0 +1,325 @@
+# Chapter 3 - Data Pre-processing
+
+```{r startup}
+library(knitr)
+library(tidymodels)
+library(sessioninfo)
+library(conflicted)
+library(patchwork)
+library(e1071)
+library(QSARdata)
+library(ggforce)
+library(corrplot)
+
+## -----------------------------------------------------------------------------
+
+conflict_prefer("filter", winner = "dplyr", quiet = TRUE)
+conflict_prefer("select", winner = "dplyr", quiet = TRUE)
+conflict_prefer("filter", winner = "dplyr", quiet = TRUE)
+
+## -----------------------------------------------------------------------------
+
+theme_set(theme_bw() + theme(legend.position = "top"))
+
+## -----------------------------------------------------------------------------
+
+options(width = 100, digits = 3)
+options(dplyr.print_min = 6, dplyr.print_max = 6)
+options(cli.width = 85)
+options(crayon.enabled = FALSE)
+
+opts_chunk$set(
+  digits = 3,
+  fig.align = 'center',
+  fig.width = 6,
+  fig.height = 4.25
+)
+```
+
+## 3.1 Case Study: Cell Segmentation in High-Content Screening
+
+We'll use the version of the data in the `modeldata` package (loaded with `tidymodels`): 
+
+```{r chapter-03-cell-data}
+data(cells)
+
+cell_train <- 
+ cells %>% 
+ filter(case == "Train") %>% 
+ select(-case)
+
+cell_test <- 
+ cells %>% 
+ filter(case == "Test") %>% 
+ select(-case)
+
+nrow(cell_train)
+nrow(cell_test)
+
+count(cells, class)
+
+ncol(cells)
+```
+
+
+## 3.2 Data Transformations for Individual Predictors
+
+### Centering and Scaling
+
+```{r chapter-03-center-scale}
+cell_rec <- 
+ recipe(class ~ ., data = cell_train) %>% 
+ step_normalize(all_predictors())
+
+cell_rec
+
+cell_rec <- prep(cell_rec)
+cell_rec
+
+juice(cell_rec) %>% slice(1:5) %>% select(angle_ch_1, total_inten_ch_4)
+cell_train %>% slice(1:5) %>% select(angle_ch_1, total_inten_ch_4)
+
+cell_norm_test <- bake(cell_rec, cell_test)
+```
+
+### Transformations to Resolve Skewness
+
+```{r chapter-03-trans-skew}
+cell_rec <- 
+ recipe(class ~ var_inten_ch_3 + perim_ch_1, data = cell_train) %>% 
+ step_log(var_inten_ch_3) %>%  
+ step_BoxCox(perim_ch_1, id = "box-cox") %>% 
+ prep()
+
+# Skewness before transformation
+cell_train %>% 
+ pluck("var_inten_ch_3") %>% 
+ e1071::skewness()
+
+# After log
+cell_rec %>% 
+ juice() %>% 
+ pluck("var_inten_ch_3") %>% 
+ e1071::skewness()
+```
+
+Left: a histogram of the standard deviation of the intensity of the pixels in actin filaments. This predictor has a strong right skewness with a concentration of points with low values. For this variable, the ratio of the smallest to largest value is 870 and a skewness value of 2.39. Right: the same data after a log transformation. The skewness value for the logged data was −0.4:
+
+```{r chapter-03-fig-02}
+var_inten_ch_3_before <- 
+ cell_train %>% 
+ ggplot(aes(x = var_inten_ch_3)) + 
+ geom_histogram(bins = 20, fill = "blue", alpha = .6, col = "white") + 
+ xlab("Natural Units")
+
+var_inten_ch_3_after <- 
+ cell_rec %>% 
+ juice() %>% 
+ ggplot(aes(x = var_inten_ch_3)) + 
+ geom_histogram(bins = 20, fill = "blue", alpha = .6, col = "white") + 
+ xlab("Log Units")
+
+var_inten_ch_3_before + var_inten_ch_3_after
+```
+
+Left: a histogram of the cell perimeter predictor. Right: the same data after a Box–Cox transformation with $\lambda$ estimated to be −1.1
+
+```{r chapter-03-fig-03}
+tidy(cell_rec, id = "box-cox")
+
+perim_ch_1_before <- 
+ cell_train %>% 
+ ggplot(aes(x = perim_ch_1)) + 
+ geom_histogram(bins = 20, fill = "blue", alpha = .6, col = "white") + 
+ xlab("Natural Units")
+
+perim_ch_1_after <- 
+ cell_rec %>% 
+ juice() %>% 
+ ggplot(aes(x = perim_ch_1)) + 
+ geom_histogram(bins = 20, fill = "blue", alpha = .6, col = "white") + 
+ xlab("Transformed Data")
+
+perim_ch_1_before + perim_ch_1_after
+```
+
+
+## 3.3 Data Transformations for Multiple Predictors
+
+### Transformations to Resolve Outliers
+
+Left: An illustrative example with a group of outlying data points. Right: When the original data are transformed, the results bring the outliers towards the majority of the data: 
+
+```{r chapter-03-fig-04}
+data(Mutagen)
+
+sp_sign_data <- 
+ Mutagen_Dragon %>% 
+ select(var_1 = RDF025m, var_2 = RTp) %>% 
+ filter(var_1 > 0)
+
+log_rec <- 
+ recipe(~ ., data = sp_sign_data) %>% 
+ step_log(all_predictors()) %>% 
+ prep()
+
+sp_sign_rec <- 
+ log_rec %>% 
+ step_mutate(log_var_1 = var_1) %>% 
+ step_normalize(var_1, var_2) %>%
+ step_spatialsign(var_1, var_2) %>%
+ prep()
+
+log_plot <- 
+ log_rec %>% 
+ juice() %>% 
+ mutate(group = ifelse(var_1 < -2.8, "\"Outliers\"", "Data Mainstream")) %>% 
+ ggplot(aes(x = var_1, y = var_2, col = group)) + 
+ geom_point() +
+ scale_color_manual(values = c("\"Outliers\"" = "red", "Data Mainstream" = rgb(0, 0, 0, .1)))
+
+sp_sign_plot <- 
+ sp_sign_rec %>% 
+ juice() %>% 
+ mutate(group = ifelse(log_var_1 < -2.8, "\"Outliers\"", "Data Mainstream")) %>% 
+ ggplot(aes(x = var_1, y = var_2, col = group, size = group)) + 
+ geom_point() +
+ scale_color_manual(values = c("\"Outliers\"" = "red", "Data Mainstream" = rgb(0, 0, 0, .1))) +
+ scale_size_manual(values = c("\"Outliers\"" = 2, "Data Mainstream" = 1/2))
+
+log_plot + sp_sign_plot
+```
+
+### Data Reduction and Feature Extraction
+
+An example of the principal component transformation for the cell segmentation data. The shapes and colors indicate which cells were poorly segmented or well segmented:
+
+```{r chapter-03-fig-05}
+bc_rec <- 
+ recipe(class ~ avg_inten_ch_1 + entropy_inten_ch_1, data = cell_train) %>% 
+ step_BoxCox(all_predictors()) %>% 
+ prep()
+
+pca_rec <- 
+ bc_rec %>% 
+ step_normalize(all_predictors()) %>% 
+ step_pca(all_predictors()) %>% 
+ prep()
+
+bc_plot <- 
+ bc_rec %>% 
+ juice() %>% 
+ ggplot(aes(x = entropy_inten_ch_1, y = avg_inten_ch_1, col = class)) + 
+ geom_point(alpha = .3) + 
+ xlab("Channel 1 Fiber Width") + 
+ ylab("Intensity Entropy Channel 1") 
+
+pca_plot <- 
+ pca_rec %>% 
+ juice() %>% 
+ ggplot(aes(x = PC1, y = PC2, col = class)) + 
+ geom_point(alpha = .3) + 
+ coord_obs_pred()+ 
+ xlab("Principal Component #1") + 
+ ylab("Principal Component #2")
+
+bc_plot + pca_plot
+```
+
+
+```{r chapter-03-all-pca}
+all_pca_rec <- 
+ recipe(class ~ ., data = cell_train) %>% 
+ step_BoxCox(all_predictors()) %>% 
+ step_normalize(all_predictors()) %>% 
+ step_pca(all_predictors(), id = "pca") %>% 
+ prep()
+
+scree_data <- 
+ tibble(var = all_pca_rec$steps[[3]]$res$sdev^2) %>% 
+ mutate(component = row_number(),
+        cum_var = cumsum(var))
+total_var <- sum(scree_data$var)
+scree_data$pct_var <- scree_data$var/total_var
+```
+
+A "scree plot" where the percentage of the total variance explained by each component is shown
+
+```{r chapter-03-fig-06}
+ggplot(scree_data, aes(x = component, y = pct_var)) +
+ geom_line() + 
+ ylab("Percent of Total Variance") + 
+ xlab("Component")
+```
+
+A plot of the first three principal components for the cell segmenta- tion data, colored by cell type
+
+```{r chapter-03-fig-07}
+all_pca_rec %>% 
+ juice() %>% 
+ select(PC1, PC2, PC3, class) %>% 
+ ggplot(aes(x = .panel_x, y = .panel_y, fill = class, colour = class)) + 
+  geom_point(position = 'auto', alpha = .2) + 
+  geom_autodensity(alpha = 0.3, colour = NA, position = 'identity') + 
+  facet_matrix(vars(PC1, PC2, PC3), layer.diag = 2)
+```
+
+A plot of the loadings of the first three principal components for the cell segmentation data, colored by optical channel. Recall that channel one was associated with the cell body, channel two with the cell nucleus, channel three with actin, and channel four with tubulin
+
+```{r chapter-03-fig-08}
+all_pca_rec %>% 
+ tidy(id = "pca") %>% 
+ select(-id) %>% 
+ pivot_wider(
+  id_cols = "terms",
+  names_from = "component",
+  values_from = "value"
+ ) %>% 
+ select(PC1, PC2, PC3, terms) %>% 
+ mutate(
+  channel = case_when(
+   grepl("1$", terms) ~ "Channel 1",
+   grepl("2$", terms) ~ "Channel 2",
+   grepl("3$", terms) ~ "Channel 3",
+   TRUE ~ "Channel 4"
+  )
+ ) %>% 
+  ggplot(aes(x = .panel_x, y = .panel_y, color = channel, shape = channel)) + 
+  geom_point(position = 'auto') + 
+  # geom_autodensity(alpha = 0.3, colour = NA, position = 'identity') + 
+  facet_matrix(vars(PC1, PC2, PC3), layer.diag = 2)
+```
+
+### Dealing with Missing Values
+
+
+### Removing Predictors
+
+zv, nzvm corr, lincomb
+
+### Between-Predictor Correlations
+
+
+```{r chapter-03-fig-10}
+cell_trans_predictors <- 
+ recipe(class ~ ., data = cell_train) %>% 
+ step_BoxCox(all_predictors()) %>% 
+ prep() %>% 
+ juice(all_predictors())
+
+cell_corr <- cor(cell_trans_predictors)
+
+corrplot(cell_corr, order = "hclust", tl.cex = .35, addgrid.col = NA)
+```
+
+### Adding Predictors
+
+
+### Binning Predictors
+
+
+## Session Information
+
+```{r chapter-02-session}
+session_info()
+```
