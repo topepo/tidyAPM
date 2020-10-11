@@ -1,0 +1,71 @@
+---
+knit: "bookdown::render_book"
+title: "A tidymodels Companion to Applied Predictive Modeling"
+author: ["Max Kuhn"]
+date: "`r tidyAPM_version()`"
+site: bookdown::bookdown_site
+description: "This website is a tidymodels companion for the 2013 book Applied Predictive Modeling by Max Kuhn and Kjell Johnson."
+github-repo: topepo/tidyAPM
+twitter-handle: topepos
+documentclass: book
+classoption: 11pt
+link-citations: yes
+colorlinks: yes
+---
+
+# Preface {-} 
+
+This website is a tidymodels companion for the 2013 book _Applied Predictive Modeling_ by Max Kuhn and Kjell Johnson. 
+
+The book heavily uses the `r pkg(caret)` package, written by the first author in 2005. The _tidymodels_ ecosystem is a collection of modeling packages designed with common APIs and a shared philosophy.
+
+## What this website is {-}
+
+What this is; replace computing sections; some comparisons to `caret`
+
+## What this website isn't {-}
+
+Not a reproduction of the book. not complete
+
+## Caveats {-}
+
+:::rmdcarrot
+These boxes describe differences between tidymodels packages and `r pkg(caret)`. 
+
+The icon was made by <a href="https://www.flaticon.com/authors/freepik" title="Freepik">Freepik</a> and was obtained from <a href="https://www.flaticon.com/free-icon/open-book_167755?term=book&page=1&position=27" title="Flaticon"> www.flaticon.com</a>
+:::
+
+## Contributions and usage
+
+This openness also allows users to contribute if they wish. Most often, this comes in the form of correcting typos, grammar, and other aspects of our work that could use improvement. Instructions for making contributions can be found in the [`contributing.md`](https://github.com/topepo/tidyAPM/blob/master/contributing.md) file. Also, be aware that this effort has a code of conduct, which can be found at [`code_of_conduct.md`](https://github.com/topepo/tidyAPM/blob/master/code_of_conduct.md). 
+
+These materials are provided under a Creative Commons Attribution license. This license makes it easy to reuse code and plots in other training materials. 
+
+
+## Background materials {-}
+
+If you are unfamiliar with tidymodels... links
+
+:::rmdrefs
+These boxes give links to background materials on the specific tidymodels packages that are used in that chapter. 
+
+The icon was made by <a href="https://www.flaticon.com/authors/freepik" title="Freepik">Freepik</a> and was obtained from <a href="https://www.flaticon.com/free-icon/carrot_2598586" title="Flaticon"> www.flaticon.com</a>
+:::
+
+
+
+## Technical Details {-}
+
+This book was written in [RStudio](http://www.rstudio.com/ide/) using [bookdown](http://bookdown.org/). The [website](linkhere) is hosted via [Netlify](http://netlify.com/), and automatically built after every push by [GitHub Actions](https://help.github.com/actions). The complete source is available on [GitHub](https://github.com/topepo/tidyAPM). We generated all plots in this book using [ggplot2](https://ggplot2.tidyverse.org/) and its black and white theme (`theme_bw()`). This version of the book was built with `r R.version.string`, [pandoc](https://pandoc.org/) version `r rmarkdown::pandoc_version()`, and the following packages:
+
+```{r pkg-list, echo = FALSE, results="asis"}
+deps <- desc::desc_get_deps()
+pkgs <- sort(deps$package[deps$type == "Imports"])
+pkgs <- sessioninfo::package_info(pkgs, dependencies = FALSE)
+df <- tibble::tibble(
+  package = pkgs$package,
+  version = pkgs$ondiskversion,
+  source = gsub("@", "\\\\@", pkgs$source)
+)
+knitr::kable(df, format = "markdown")
+```
