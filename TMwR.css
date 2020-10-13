@@ -252,7 +252,8 @@ div.rmdnote,
 div.rstudio-tip, 
 div.rmdwarning,
 div.rmdcarrot,
-div.rmdrefs {
+div.rmdrefs,
+div.rmdnotequal {
   padding: 1em;
   margin: 1em 0;
   padding-left: 100px;
@@ -296,10 +297,16 @@ div.rmdwarning code {
 
 div.rmdcarrot {
   background-image: url("images/carrot.png");
+  background-color: #eab0c41a !important;
 }
 
 div.rmdrefs {
   background-image: url("images/open-book.png");
+}
+
+div.rmdnotequal {
+  background-image: url("images/not-equal.png");
+  background-color: #eab0c41a !important;
 }
 
 /* ----- For Large Screens -----*/
