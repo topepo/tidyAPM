@@ -1,6 +1,7 @@
 # Data Pre-Processing
 
 ```{r chapter-03-startup, include = FALSE}
+knitr::opts_chunk$set(fig.path = "figures/")
 library(knitr)
 library(tidymodels)
 library(patchwork)

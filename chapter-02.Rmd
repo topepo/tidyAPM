@@ -1,11 +1,12 @@
 # A Short Tour of the Predictive Modeling Process
 
 ```{r chapter-02-startup, include = FALSE}
+knitr::opts_chunk$set(fig.path = "figures/")
 library(tidymodels)
 library(AppliedPredictiveModeling)
 library(patchwork)
 
-pkg_list <- c("patchwork", "AppliedPredictiveModeling", "tidymodels")
+pkg_list <- c("patchwork", "AppliedPredictiveModeling", "tidymodels", "earth")
 ```
 
 The R package used in this chapter are `r pkg_text(pkg_list)`.
