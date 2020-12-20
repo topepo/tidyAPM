@@ -11,27 +11,40 @@ Authors@R: c(
     )
 Depends: R (>= 4.0.0)
 URL: https://github.com/topepo/tidyAPM
+biocViews: mixOmics
 Imports:
   AppliedPredictiveModeling,
+  baguette,
   bookdown,
   broom,
   conflicted,
+  corrr,
   corrplot,
+  Cubist,
   dials,
   dplyr,
   e1071,
   earth,
+  finetune,
   ggforce,
   ggplot2,
+  glmnet,
+  janitor,
   kernlab,
+  kknn,
   knitr,
+  mixOmics,
   modeldata,
+  nnet,
   parsnip,
   patchwork,
   purrr,
   QSARdata,
+  ranger,
   recipes,
+  rpart,
   rsample,
+  rules,
   sessioninfo,
   tibble,
   tidymodels,
@@ -39,5 +52,7 @@ Imports:
   tidyr,
   tune,
   workflows,
+  xgboost,
+  xrf,
   yardstick
 License: CC BY 4.0

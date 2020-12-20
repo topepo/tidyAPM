@@ -1,0 +1,341 @@
+# Linear Regression and Its Cousins
+
+```{r chapter-06-startup, include = FALSE}
+knitr::opts_chunk$set(fig.path = "figures/")
+library(knitr)
+library(tidymodels)
+library(patchwork)
+library(plsmod)
+library(corrr)
+
+cores <- parallel::detectCores()
+if (!grepl("mingw32", R.Version()$platform)) {
+ library(doMC)
+ registerDoMC(cores = cores)
+} else {
+  library(doParallel)
+  cl <- makePSOCKcluster(cores)
+  registerDoParallel(cl)
+}
+```
+
+## Case Study: Quantitative Structure-Activity Relationship Modeling
+
+
+
+```{r chapter-06-solubility-data}
+library(tidymodels)
+
+load("solubility_data.RData")
+
+dim(solubility)
+
+solubility_split
+
+solubility_train <- training(solubility_split)
+solubility_test  <- testing(solubility_split)
+
+set.seed(3267)
+solubility_folds <- vfold_cv(solubility_train, strata = solubility)
+```
+
+Differences in approach here; new stuff and can tune pre-processing
+
+```{r chapter-06-fig-02, fig.height=4}
+library(patchwork)
+
+mol_weight_plot <- 
+ ggplot(solubility_train, aes(x = mol_weight, y = solubility)) + 
+ geom_point(alpha = .3)
+
+fp_plot <- 
+ solubility_train %>% 
+ mutate(fp_example = ifelse(fp_100 == 1, "structure present", "structure absent")) %>% 
+ ggplot(aes(x = fp_example, y = solubility)) + 
+ geom_boxplot() + 
+ labs(x = NULL)
+
+mol_weight_plot + fp_plot
+```
+
+
+```{r chapter-06-rec}
+solubility_rec <- 
+  recipe(solubility ~ ., data = solubility_train) %>% 
+  step_zv(all_predictors()) %>% 
+  step_YeoJohnson(all_predictors())
+```
+
+```{r chapter-06-fig-03, fig.height=8, out.width="100%", warning=FALSE}
+solubility_rec %>% 
+ prep() %>% 
+ bake(new_data = NULL) %>% 
+ select(-starts_with("fp")) %>% 
+ pivot_longer(cols = c(-solubility), names_to = "predictor", values_to = "value") %>% 
+ ggplot(aes(x = value, y = solubility)) +
+ geom_point(alpha = .3, cex = 0.5) +
+ geom_smooth(se = FALSE) +
+ facet_wrap(~ predictor, scales = "free_x") + 
+ labs(x = "YJ Transformed Predictors")
+```
+
+
+corr plots
+
+```{r chapter-06-corrr}
+library(corrr)
+
+cor_values <- 
+  solubility_rec %>% 
+  prep() %>% 
+  bake(new_data = NULL) %>% 
+  select(-starts_with("fp"), -solubility) %>% 
+  correlate()
+```
+
+
+```{r chapter-06-fig-05}
+cor_values %>% 
+  rplot() + 
+  coord_fixed(ratio = 1) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+
+```{r chapter-06-corr-net}
+cor_values %>% 
+  network_plot(min_cor = .5)
+```
+
+## Ordinary Least Squares
+
+```{r chapter-06-ols-def, message=FALSE}
+lin_reg_spec <- linear_reg() %>% set_engine("lm")
+
+lin_reg_rec <- 
+  solubility_rec %>% 
+  step_corr(all_predictors(), threshold = 0.9)
+
+lin_reg_wflow <- 
+  workflow() %>% 
+  add_model(lin_reg_spec) %>% 
+  add_recipe(lin_reg_rec)
+```
+
+```{r chapter-06-ols-fit}
+rs_ctrl <- control_resamples(save_pred = TRUE)
+rmse_stats <- metric_set(rmse)
+
+lin_reg_resamp <-
+  lin_reg_wflow %>% 
+  fit_resamples(solubility_folds, control = rs_ctrl, metrics = rmse_stats)
+
+collect_metrics(lin_reg_resamp)
+
+regression_plots(lin_reg_resamp)
+```
+
+
+```{r chapter-06-ols-tune}
+gd_ctrl <- control_grid(save_pred = TRUE, parallel_over = "everything")
+
+lin_reg_tune_rec <- 
+  solubility_rec %>% 
+  step_corr(all_predictors(), threshold = tune())
+
+lin_reg_tune_wflow <- 
+  workflow() %>% 
+  add_model(lin_reg_spec) %>% 
+  add_recipe(lin_reg_tune_rec)
+
+thresh_grid <- tibble(threshold = c((1:9)/10, 0.95, 0.99))
+
+lin_reg_tune <-
+  lin_reg_tune_wflow %>% 
+  tune_grid(solubility_folds, grid = thresh_grid, control = gd_ctrl, metrics = rmse_stats)
+```
+
+
+
+```{r chapter-06-ols-perf-plot}
+autoplot(lin_reg_tune)
+```
+```{r chapter-06-ols-best}
+show_best(lin_reg_tune)
+```
+
+## Partial Least Squares
+
+```{r chapter-06-pcr}
+pcr_rec <- 
+  solubility_rec %>% 
+  step_normalize(all_predictors()) %>% 
+  step_pca(all_predictors(), num_comp = tune())
+
+pcr_wflow <- 
+  workflow() %>% 
+  add_model(lin_reg_spec) %>% 
+  add_recipe(pcr_rec)
+
+pcr_tune <-
+  pcr_wflow %>% 
+  tune_grid(solubility_folds, grid = tibble(num_comp = 1:50), control = gd_ctrl, metrics = rmse_stats)
+
+autoplot(pcr_tune)
+```
+
+
+```{r chapter-06-pls, message=FALSE}
+library(plsmod)
+
+pls_spec <- 
+  pls(num_comp = tune()) %>% 
+  set_engine("mixOmics") %>% 
+  set_mode("regression")
+
+normalized_rec <- 
+  solubility_rec %>% 
+  step_normalize(all_predictors())
+
+pls_wflow <- 
+  workflow() %>% 
+  add_model(pls_spec) %>% 
+  add_recipe(normalized_rec)
+
+pls_tune <-
+  pls_wflow %>%
+  tune_grid(
+    solubility_folds,
+    grid = tibble(num_comp = 1:50),
+    control = gd_ctrl,
+    metrics = rmse_stats
+  )
+
+autoplot(pls_tune)
+```
+
+
+```{r chapter-06-fig-11}
+pls_tune_rme <- 
+  pls_tune %>% 
+  collect_metrics() %>% 
+  filter(.metric == "rmse") %>% 
+  mutate(model = "PLS")
+
+pcr_tune_rme <- 
+  pcr_tune %>% 
+  collect_metrics() %>% 
+  filter(.metric == "rmse") %>% 
+  mutate(model = "PCR")
+
+bind_rows(pcr_tune_rme, pls_tune_rme) %>% 
+  ggplot(aes(x = num_comp, y = mean, col = model)) +
+  geom_line() +
+  geom_point() + 
+  labs(x = "Number of Components", y = "rmse")
+```
+
+
+```{r chapter-06-fig-13}
+regression_plots(pcr_tune, parameters = select_best(pcr_tune)) + 
+  ggtitle("PCR")
+regression_plots(pls_tune, parameters = select_best(pls_tune)) + 
+  ggtitle("PLS")
+```
+
+```{r chapter-06-pls-importance}
+best_pls_comp <- select_best(pls_tune)
+best_pls_comp
+
+pls_wflow_fit <- 
+ pls_wflow %>% 
+ finalize_workflow(best_pls_comp) %>% 
+ fit(solubility_train)
+```
+
+## Penalized Models
+
+```{r chapter-06-ridge, message=FALSE}
+ridge_spec <- 
+  linear_reg(penalty = tune(), mixture = 0) %>% 
+  set_engine("glmnet") %>% 
+  set_mode("regression")
+
+ridge_wflow <- 
+  workflow() %>% 
+  add_model(ridge_spec) %>% 
+  add_recipe(normalized_rec)
+
+ridge_tune <-
+  ridge_wflow %>%
+  tune_grid(solubility_folds,
+            grid = tibble(penalty = 10 ^ seq(-1.5, 1, length = 20)),
+            control = gd_ctrl, 
+            metrics = rmse_stats)
+
+autoplot(ridge_tune)
+```
+
+
+```{r chapter-06-lasso}
+lasso_spec <- 
+  linear_reg(penalty = tune(), mixture = 1) %>% 
+  set_engine("glmnet") %>% 
+  set_mode("regression")
+
+lasso_wflow <- 
+  workflow() %>% 
+  add_model(lasso_spec) %>% 
+  add_recipe(normalized_rec)
+
+lasso_tune <-
+  lasso_wflow %>%
+  tune_grid(solubility_folds,
+            grid = tibble(penalty = 10 ^ seq(-4, 0, length = 20)),
+            control = gd_ctrl, 
+            metrics = rmse_stats)
+
+autoplot(lasso_tune)
+```
+
+
+
+```{r chapter-06-glmnet}
+glmnet_spec <- 
+  linear_reg(penalty = tune(), mixture = tune()) %>% 
+  set_engine("glmnet") %>% 
+  set_mode("regression")
+
+glmnet_wflow <- 
+  workflow() %>% 
+  add_model(glmnet_spec) %>% 
+  add_recipe(normalized_rec)
+
+glmnet_grid <- 
+  tidyr::crossing(
+    penalty = 10^seq(-3, -1, length.out = 20), 
+    mixture = c(0.05, 0.2, 0.4, 0.6, 0.8, 1)
+  ) 
+
+glmnet_tune <-
+  glmnet_wflow %>%
+  tune_grid(solubility_folds,
+            grid = glmnet_grid,
+            control = gd_ctrl, 
+            metrics = rmse_stats)
+
+autoplot(glmnet_tune)
+```
+
+```{r chapter-06-glmnet-best}
+show_best(glmnet_tune)
+```
+
+
+
+
+```{r chapter-06-teardown, include = FALSE}
+if (grepl("mingw32", R.Version()$platform)) {
+ stopCluster(cl)
+} 
+```

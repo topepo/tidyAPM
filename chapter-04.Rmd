@@ -311,8 +311,8 @@ set.seed(4)
 svm_wflow_fit <- fit(svm_wflow_final, german_credit_train)
 
 test_pred <- 
-        predict(svm_wflow_fit, german_credit_test) %>% 
-        bind_cols(german_credit_test)
+  predict(svm_wflow_fit, german_credit_test) %>% 
+  bind_cols(german_credit_test)
 
 test_pred %>% accuracy(Class, .pred_class)
 ```

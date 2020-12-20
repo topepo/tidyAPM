@@ -1,0 +1,241 @@
+# Regression Trees and Rule-Based Models
+
+```{r chapter-08-startup, include = FALSE}
+knitr::opts_chunk$set(fig.path = "figures/")
+library(knitr)
+library(tidymodels)
+library(rules)
+library(baguette)
+library(lattice)
+
+caching <- TRUE
+
+cores <- parallel::detectCores()
+if (!grepl("mingw32", R.Version()$platform)) {
+ library(doMC)
+ registerDoMC(cores = cores)
+} else {
+  library(doParallel)
+  cl <- makePSOCKcluster(cores)
+  registerDoParallel(cl)
+}
+```
+
+```{r chapter-08-prereq}
+library(tidymodels)
+load("solubility_data.RData")
+
+solubility_rec <- 
+  recipe(solubility ~ ., data = solubility_train) %>% 
+  step_zv(all_predictors()) %>% 
+  step_YeoJohnson(all_predictors())
+
+normalized_rec <- 
+  solubility_rec %>% 
+  step_normalize(all_predictors())
+
+solubility_wflw <- 
+  workflow() %>% 
+  add_recipe(solubility_rec)
+
+rs_ctrl <- control_resamples(save_pred = TRUE)
+gd_ctrl <- control_grid(save_pred = TRUE, parallel_over = "everything")
+bo_ctrl <- control_bayes(save_pred = TRUE, verbose = TRUE)
+
+rmse_stats <- metric_set(rmse)
+```
+
+
+no weka, xgboost, rulefit, no party
+
+## Basic Regression Trees
+
+```{r chapter-08-cart}
+cart_spec <- 
+  decision_tree(cost_complexity = tune(), min_n = tune()) %>% 
+  set_engine("rpart") %>% 
+  set_mode("regression")
+
+cart_wflow <- 
+  workflow() %>% 
+  add_model(cart_spec) %>% 
+  add_recipe(solubility_rec)
+
+cart_grid <-
+ tidyr::crossing(cost_complexity = 10 ^ seq(-5,-1, length = 20),
+                 min_n = 5 * (1:8)) 
+cart_tune <-
+  cart_wflow %>%
+  tune_grid(solubility_folds, grid = cart_grid, control = gd_ctrl, metrics = rmse_stats)
+
+autoplot(cart_tune)
+```
+
+## Regression Model Trees
+
+
+
+
+## Rule-Based Models
+
+```{r chapter-08-cubist-single}
+library(rules)
+
+reg_rules_spec <- 
+  cubist_rules(committees = 1, neighbors = tune()) %>% 
+  set_engine("Cubist") 
+
+reg_rules_wflow <- 
+  workflow() %>% 
+  add_model(reg_rules_spec) %>% 
+  add_recipe(solubility_rec)
+
+reg_rules_grid <- tibble(neighbors = 0:9) 
+
+reg_rules_tune <-
+  reg_rules_wflow %>%
+  tune_grid(solubility_folds, grid = reg_rules_grid, control = gd_ctrl, metrics = rmse_stats)
+
+autoplot(reg_rules_tune)
+```
+
+
+## Bagged Trees
+
+
+```{r chapter-08-bagged-cart, cache = caching}
+library(baguette)
+
+bag_cart_spec <- 
+  bag_tree() %>% 
+  set_engine("rpart", times = 50L) %>% 
+  set_mode("regression")
+
+bag_cart_wflow <- 
+  workflow() %>% 
+  add_model(bag_cart_spec) %>% 
+  add_recipe(solubility_rec)
+
+set.seed(1292)
+bag_cart_tune <-
+  bag_cart_wflow %>%
+  fit_resamples(solubility_folds, control = rs_ctrl, metrics = rmse_stats)
+```
+
+
+## Random Forests
+
+
+```{r chapter-08-rf, cache = caching}
+rf_spec <- 
+  rand_forest(mtry = tune(), min_n = tune(), trees = 1000) %>% 
+  set_engine("ranger") %>% 
+  set_mode("regression")
+
+rf_wflow <- 
+  workflow() %>% 
+  add_model(rf_spec) %>% 
+  add_recipe(solubility_rec)
+
+set.seed(4326)
+rf_tune <-
+  rf_wflow %>%
+  tune_grid(solubility_folds, grid = 20, control = gd_ctrl, metrics = rmse_stats)
+
+autoplot(rf_tune)
+```
+
+
+## Boosting
+
+
+```{r chapter-08-xgb, cache = caching}
+xgb_spec <- 
+  boost_tree(tree_depth = tune(), learn_rate = tune(), loss_reduction = tune(), 
+             min_n = tune(), sample_size = tune(), trees = tune()) %>% 
+  set_engine("xgboost") %>% 
+  set_mode("regression")
+
+xgb_wflow <- 
+  workflow() %>% 
+  add_model(xgb_spec) %>% 
+  add_recipe(solubility_rec)
+
+set.seed(4415)
+xgb_bo <-
+  xgb_wflow %>%
+  tune_bayes(
+    solubility_folds,
+    initial = 8,
+    iter = 15,
+    control = bo_ctrl, 
+    metrics = rmse_stats
+  )
+
+autoplot(xgb_bo, type = "performance")
+```
+
+
+## Cubist
+
+
+```{r chapter-08-cubist, cache = caching}
+cubist_spec <- 
+  cubist_rules(committees = tune(), neighbors = tune()) %>% 
+  set_engine("Cubist") 
+
+cubist_wflow <- 
+  workflow() %>% 
+  add_model(cubist_spec) %>% 
+  add_recipe(solubility_rec)
+
+cubist_grid <- tidyr::crossing(
+  committees = c(1:9, 10 * (1:5)), neighbors = c(0, 1, 3, 5, 7, 9)) 
+
+cubist_tune <-
+  cubist_wflow %>%
+  tune_grid(solubility_folds, grid = cubist_grid, control = gd_ctrl, metrics = rmse_stats)
+
+autoplot(cubist_tune)
+```
+
+
+
+```{r chapter-08-rule-fit, cache = caching}
+rulefit_spec <- 
+  rule_fit(tree_depth = tune(), learn_rate = tune(), loss_reduction = tune(), 
+           min_n = tune(), sample_size = tune(), trees = tune(), penalty = tune()) %>% 
+  set_engine("xrf") %>% 
+  set_mode("regression")
+
+rulefit_wflow <- 
+  workflow() %>% 
+  add_model(rulefit_spec) %>% 
+  add_recipe(solubility_rec)
+
+rulefit_param <- 
+  rulefit_wflow %>% 
+  parameters() %>% 
+  update(trees = trees(c(1, 100)))
+
+set.seed(445)
+rulefit_bo <-
+  rulefit_wflow %>%
+  tune_bayes(
+    solubility_folds,
+    param_info = rulefit_param,
+    initial = 10,
+    iter = 25,
+    control = bo_ctrl, 
+    metrics = rmse_stats
+  )
+
+autoplot(rulefit_bo, type = "performance")
+```
+
+
+```{r chapter-08-teardown, include = FALSE}
+if (grepl("mingw32", R.Version()$platform)) {
+ stopCluster(cl)
+} 
+```

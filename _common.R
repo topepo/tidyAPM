@@ -80,5 +80,7 @@ library(conflicted)
 
 conflict_prefer("filter", winner = "dplyr", quiet = TRUE)
 conflict_prefer("select", winner = "dplyr", quiet = TRUE)
-conflict_prefer("filter", winner = "dplyr", quiet = TRUE)
+conflict_prefer("slice",  winner = "dplyr", quiet = TRUE)
+conflict_prefer("rename", winner = "dplyr", quiet = TRUE)
+conflict_prefer("step",   winner = "recipes", quiet = TRUE)
 
