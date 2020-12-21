@@ -149,7 +149,7 @@ lin_reg_wflow <-
 Since the filtering threshold is set, there is no model tuning. We will measure the performance for the model via resampling using `fit_resamples()`. The control function saves the out-of-sample predictions and the RMSE is measured for each fit. Ordinarily, RMSE and $R_^2$ are measured. However, we only compute the former. 
 
 ```{r chapter-06-ols-fit}
-rs_ctrl <- control_resamples(save_pred = TRUE)
+rs_ctrl <- control_resamples(save_pred = TRUE, save_workflow = TRUE)
 rmse_stats <- metric_set(rmse)
 
 lin_reg_resamp <-
@@ -172,7 +172,7 @@ regression_plots(lin_reg_resamp)
 Is 0.90 the best correlation threshold? `r pkg(caret)` is unable to tune over preprocessing steps but tidymodels can. The same recipe is recreated but, instead of giving the `threshold` argument a number, a value of `tune()` is used to mark it for optimization. `tune_grid()` can be used to evaluate a series of pre-specified threshold values: 
 
 ```{r chapter-06-ols-tune}
-gd_ctrl <- control_grid(save_pred = TRUE, parallel_over = "everything")
+gd_ctrl <- control_grid(save_pred = TRUE, parallel_over = "everything", save_workflow = TRUE)
 
 lin_reg_tune_rec <- 
   solubility_rec %>% 
@@ -401,4 +401,7 @@ Both the fitted recipe and model are contained in this object (much like the res
 if (grepl("mingw32", R.Version()$platform)) {
  stopCluster(cl)
 } 
+
+save(lin_reg_tune, pcr_tune, pls_tune, ridge_tune, lasso_tune, glmnet_tune,
+     version = 2, compress = "xz", file = "RData/chapter_06.RData")
 ```

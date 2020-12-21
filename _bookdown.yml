@@ -10,6 +10,7 @@ rmd_files: [
   "chapter-06.Rmd",
   "chapter-07.Rmd",
   "chapter-08.Rmd",
+  "chapter-09.Rmd",
   "chapter-10.Rmd"
 ]
 

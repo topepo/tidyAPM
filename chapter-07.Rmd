@@ -19,6 +19,8 @@ if (!grepl("mingw32", R.Version()$platform)) {
 }
 ```
 
+In this chapter of _APM_, a few different nonlinear models are discussed. Before proceeding, there are some objects from the previous chapter that are required here:
+
 ```{r chapter-07-prereq}
 library(tidymodels)
 load("solubility_data.RData")
@@ -36,21 +38,36 @@ solubility_wflw <-
   workflow() %>% 
   add_recipe(solubility_rec)
 
-rs_ctrl <- control_resamples(save_pred = TRUE)
-gd_ctrl <- control_grid(save_pred = TRUE, parallel_over = "everything")
-bo_ctrl <- control_bayes(save_pred = TRUE, verbose = TRUE)
+rs_ctrl <- control_resamples(save_pred = TRUE, save_workflow = TRUE)
+gd_ctrl <- control_grid(save_pred = TRUE, parallel_over = "everything", save_workflow = TRUE)
 
 rmse_stats <- metric_set(rmse)
 ```
 
+The R packages used in this chapter are: `r pkg_text(c("tidymodels", "nnet", "earth", "kknn", "kernlab"))`. 
+
 ## Neural Networks
 
-```{r chapter-07-nnet, cache = caching}
+`r pkg(parsnip)` has a general interface for single layer feed-forward network models (aka multilayer perceptron) called `mlp()`. There are a few different engines that can be used: 
+
+```{r chapter-07-mlp-engines}
+show_engines("mlp")
+```
+
+For consistency, we'll focus on the `r pkg(nnet)` package. The different engines don't all have the same tuning parameters. With the `r pkg(nnet)` package, we can optimize on `hidden_units()`, `penalty()` (for weight decay), and `epochs()`. The `r pkg(dials)` objects for these parameters have default ranges but those can be changed using the `update()` function (see the example in the next code block). 
+
+As notes below, we might need to fit a large number of parameters so the additional `MaxNWts` argument is given as an engine-specific argument (as opposed to passing the argument to `mlp()`). 
+
+
+```{r chapter-07-nnet-setup}
 nnet_spec <- 
  mlp(hidden_units = tune(), penalty = tune(), epochs = tune()) %>% 
  # nnet() has a fixed limit on the number of parameters that is fairly
- # low. We set if to work with the largest network that we'll make. 
- set_engine("nnet", MaxNWts = 2600) %>% 
+ # low default. We set it to work with the largest network that we'll 
+ # make. If we go up to 15 hidden units, we will need
+ #   15 * (ncol(solubility_train) + 1) + 15 + 1 
+ # parameters (about 3500). 
+ set_engine("nnet", MaxNWts = 3500) %>% 
  set_mode("regression")
 
 nnet_wflow <- 
@@ -61,7 +78,19 @@ nnet_wflow <-
 nnet_param <- 
  nnet_wflow %>% 
  parameters() %>% 
- update(penalty = penalty(c(-10, 1)))
+ update(
+  hidden_units = hidden_units(c(1, 15)),
+  # penalty is in log-10 units:
+  penalty = penalty(c(-10, 1))
+  )
+```
+
+Instead of using basic grid search, an iterative optimization method called Bayesian Optimization is used to progressively determine the best tuning parameters. An initial grid of five combinations are used to start, then a meta-model is used to predict what tuning parameter combinations should be evaluated next. Fifteen iterations of this search will be used. See Chapter 12 of [_Tidy Modeling with R_](https://tmwr.org) for more details and references. 
+
+```{r chapter-07-nnet, cache = caching, fig.height=4}
+bo_ctrl <- control_bayes(save_pred = TRUE, verbose = TRUE, 
+                         parallel_over = "everything", 
+                         save_workflow = TRUE)
 
 set.seed(123)
 nnet_bo <-
@@ -69,7 +98,7 @@ nnet_bo <-
  tune_bayes(
   solubility_folds,
   initial = 5,
-  iter = 10,
+  iter = 15,
   param_info = nnet_param,
   control = bo_ctrl,
   metrics = rmse_stats
@@ -78,10 +107,17 @@ nnet_bo <-
 autoplot(nnet_bo, type = "performance")
 ```
 
+```{r chapter-07-nnet-best}
+show_best(nnet_bo)
+```
+
+These results look fairly good when compared to the best results from the last chapter. 
 
 ## Multivariate Adaptive Regression Splines
 
-```{r chapter-07-mars, cache = caching}
+For MARS models via the `r pkg(earth)` package, the `mars()` function is used with the `"earth"` engine. To tune the model using our 10-fold cross-validation approach (instead of the internal GCV method), set `prune_method = "none"` as an argument. The default value for `num_terms` may not be wide enough for all problems and we use a manually created grid to evaluate the parameter space: 
+
+```{r chapter-07-mars, cache = caching, message = FALSE}
 mars_spec <- 
   mars(num_terms = tune(), prod_degree = tune(), prune_method = "none") %>% 
   set_engine("earth") %>% 
@@ -106,9 +142,23 @@ mars_tune <-
 autoplot(mars_tune)
 ```
 
+To use the interval GCV approach, only set the `prod_degree` parameters:
+
+```{r chapter-07-mars-gcv, cache = caching, message = FALSE}
+mars_gcv_spec <- 
+  mars(prod_degree = tune()) %>% 
+  set_engine("earth") %>% 
+  set_mode("regression")
+```
+
+
 ## Support Vector Machines
 
-```{r chapter-07-svm-radial, cache = caching}
+For support vector machine models that use the radial basis function kernel, there is some difference in how the `sigma` function is optimized. In `r pkg(caret)`, this value was pre-estimated and was not tuned. In tidymodels, a default range is used instead. As a result, both the cost value and the radial basis function parameter are optimized. 
+
+There are two SVM `r pkg(parsnip)` models: `svm_rbf()` and `svm_poly()` (depending on the kernel function that you would like to use). To start, used the following code for the radial basis function kernel: 
+
+```{r chapter-07-svm-radial, cache = caching, message = FALSE}
 svm_r_spec <- 
   svm_rbf(cost = tune(), rbf_sigma = tune()) %>% 
   set_engine("kernlab") %>% 
@@ -132,8 +182,28 @@ svm_r_tune <-
 autoplot(svm_r_tune)
 ```
 
+There appears to be a narrow range of `rbf_sigma()` values with good results. To do a better job, the grid search results above can be fed into another Bayesian optimization to probe the area of good performance: 
 
-```{r chapter-07-svm-poly, cache = caching}
+```{r chapter-07-svm-radial-bo, cache = caching, message = FALSE, fig.height=4}
+set.seed(4983)
+svm_r_bo <-
+ svm_r_wflow %>%
+ tune_bayes(
+  solubility_folds,
+  initial = svm_r_tune,
+  iter = 10,
+  control = bo_ctrl,
+  metrics = rmse_stats
+ )
+
+autoplot(svm_r_bo, type = "parameters")
+```
+
+From the `autoplot()` results, the effective range of `rbf_sigma()` is investigated in more detail and better RMSE values were the result. 
+
+For the polynomial kernel function, the syntax is very similar but a different kernel parameter argument is used: 
+
+```{r chapter-07-svm-poly, cache = caching, fig.height=4}
 svm_p_spec <- 
   svm_poly(cost = tune(), degree = tune()) %>% 
   set_engine("kernlab") %>% 
@@ -163,8 +233,18 @@ svm_p_tune <-
 autoplot(svm_p_tune)
 ```
 
+Note that the polynomial kernel value must be an integer. 
+
 
 ## K-Nearest Neighbors
+
+The default KNN model in `r pkg(parsnip)` uses the `r pkg(kknn)` package. This package allows the user to optimize the number of neighbors as well as two other parameters: 
+
+ * The Minkowski distance parameter (with argument `dist_power`). This is the exponent for the generalized distance measure where a value of 1 is Manhattan distance and 2 is Euclidean distance. Other values in-between can also be used. 
+ 
+ * A weighting function for distance (`weight_func`). This alters the case weights depending on the distance. For example, you might want far away neighbors to have less influence on the prediction than points that are nearby. 
+ 
+All three can be optimized in the `nearest_neighbor()` function: 
 
 ```{r chapter-07-knn, cache = caching}
 knn_spec <- 
@@ -185,9 +265,18 @@ knn_tune <-
 autoplot(knn_tune)
 ```
 
+The five best results are: 
+
+```{r chapter-07-knn-best}
+show_best(knn_tune)
+```
+
 
 ```{r chapter-07-teardown, include = FALSE}
 if (grepl("mingw32", R.Version()$platform)) {
  stopCluster(cl)
 } 
+
+save(knn_tune, svm_p_tune, svm_r_tune, mars_tune, nnet_bo,
+     version = 2, compress = "xz", file = "RData/chapter_07.RData")
 ```

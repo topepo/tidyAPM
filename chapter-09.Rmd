@@ -1,0 +1,127 @@
+# A Summary of Solubility Models
+
+
+```{r chapter-09-startup, include = FALSE}
+knitr::opts_chunk$set(fig.path = "figures/")
+library(knitr)
+library(tidymodels)
+library(tbd)
+
+caching <- TRUE
+
+cores <- parallel::detectCores()
+if (!grepl("mingw32", R.Version()$platform)) {
+ library(doMC)
+ registerDoMC(cores = cores)
+} else {
+  library(doParallel)
+  cl <- makePSOCKcluster(cores)
+  registerDoParallel(cl)
+}
+
+# ------------------------------------------------------------------------------
+
+load("RData/chapter_06.RData")
+load("RData/chapter_07.RData")
+load("RData/chapter_08.RData")
+
+# obj <- sort(ls(pattern = "(_tune$)|(_resamp$)|(_bo$)"))
+# obj_name <- strsplit(obj, "_") %>% purrr::map_chr(~ .x[1])
+# obj_name[obj  == "svm_r_tune"] <- "svm (radial)"
+# obj_name[obj  == "svm_p_tune"] <- "svm (poly)"
+# obj_name[obj  == "lin"] <- "ols"
+# obj_name[obj  == "reg"] <- "model rules"
+# paste0("'", obj_name, "' = ", obj, collapse = ", ")
+```
+
+In _APM_, this chapter gathers the results across all of the models created in Chapters 6, 7, and 8. It compares their performance metrics. We'll do the same here and introduce another R package. The R packages used in this chapter are: `r pkg_text(c("tidymodels", "rules", "Cubist", "tbd", "patchwork"))`. 
+
+The `r pkg(tbd)` package enables a method for collecting workflow into a _workflow set_. For our previous results, we can collect the objects with the results into a list then create a workflow set:
+
+```{r chapter-09-collect}
+library(tidymodels)
+library(tbd)
+results_list <- 
+ list(
+  'bag' = bag_cart_resamp, 'cart' = cart_tune, 'cubist' = cubist_tune, 
+  'glmnet' = glmnet_tune, 'knn' = knn_tune, 'lasso' = lasso_tune, 
+  'ols' = lin_reg_tune, 'mars' = mars_tune, 'nnet' = nnet_bo, 
+  'pcr' = pcr_tune, 'pls' = pls_tune, 'model rules' = reg_rules_tune, 
+  'rf' = rf_tune, 'ridge' = ridge_tune, 'rulefit' = rulefit_bo, 
+  'svm (poly)' = svm_p_tune, 'svm (radial)' = svm_r_tune, 'xgb' = xgb_bo
+ )
+
+solubility_res <- as_workflow_set(results_list)
+solubility_res
+```
+
+The next chapter shows the real power of workflow sets: creating and evaluating them _en mass_. 
+
+The `r pkg(tbd)` package has some nice summary methods. `rank_results()` will list the model showing the best configurations based on a single metric. We only used RMSE here so there is no need to specify the ranking metric.
+
+```{r chapter-09-summarize}
+rank_results(solubility_res)
+```
+The shows _everything_. A more succinct summary comes from using `select_best = TRUE` so that a single tuning parameter combination is shown for each model: 
+
+```{r chapter-09-summarize-best}
+rank_results(solubility_res, select_best = TRUE)
+```
+
+The `autoplot()` function also provides a nice visualization of the results:
+
+```{r chapter-09-summarize-plot}
+autoplot(solubility_res, select_best = TRUE) +
+ theme(legend.position = "right")
+```
+
+Suppose we settled on a Cubist model. The next steps would be to
+
+ 1. Select the final tuning parameters.
+ 1. Fit the final model on the entire training set. 
+ 1. Predict and evaluate the test set. 
+
+In tidymodels, we've already seen the `finalize_workflow()` function. We can finalize on any tuning parameters by passing in a tibble with those values. Here, we will finalize on the numerically best result so that the workflow has real values (instead of the `tune()` placeholders):
+
+```{r chapter-09-final-cubist}
+library(rules)
+
+cubist_final_wflow <- 
+ cubist_wflow %>% 
+ finalize_workflow(select_best(cubist_tune))
+cubist_final_wflow
+```
+
+To fit the final model and evaluate the test set, there is a convenience function called `last_fit()` that uses the initial training/testing split object produced by the `r pkg(rsample)` package. It fits the workflow to the training set, saves the fitted model, and returns the test set metrics and predictions. To get the split object, we load the original data objects:
+
+```{r chapter-09-last-fit, message = FALSE}
+load("solubility_data.RData")
+
+cubist_final_res <- 
+ cubist_final_wflow %>% 
+ last_fit(split = solubility_split)
+
+cubist_final_res
+```
+
+The `.workflow` column contains the fitted recipe and model from the training set. The `.metrics` and `.predictions` columns contain the appropriate test set values but the usual accessor functions can also be used: 
+
+```{r chapter-09-last-fit-metrics, message = FALSE}
+test_results <- collect_metrics(cubist_final_res)
+test_results
+
+# Resampling results:
+show_best(cubist_tune, n = 1)
+```
+
+The test set results look slightly worse than the training set statistics (but this is consistent with the results shown in _APM_). 
+
+The `collect_predictions()` function can also be used to get a data frame of predicted values. Our `regression_plots()` function will also generate the standard plot (although the test set results are shown here):
+
+```{r chapter-09-last-fit-plot}
+test_pred <- collect_predictions(cubist_final_res)
+test_pred
+
+regression_plots(cubist_final_res)
+```
+

@@ -21,6 +21,8 @@ if (!grepl("mingw32", R.Version()$platform)) {
 }
 ```
 
+As before, we first load some objects to enable our analysis of the solubility data:
+
 ```{r chapter-08-prereq}
 library(tidymodels)
 load("solubility_data.RData")
@@ -38,19 +40,31 @@ solubility_wflw <-
   workflow() %>% 
   add_recipe(solubility_rec)
 
-rs_ctrl <- control_resamples(save_pred = TRUE)
-gd_ctrl <- control_grid(save_pred = TRUE, parallel_over = "everything")
-bo_ctrl <- control_bayes(save_pred = TRUE, verbose = TRUE)
+rs_ctrl <- control_resamples(save_pred = TRUE, save_workflow = TRUE)
+gd_ctrl <- control_grid(save_pred = TRUE, save_workflow = TRUE, parallel_over = "everything")
+bo_ctrl <- control_bayes(save_pred = TRUE, save_workflow = TRUE, 
+                         verbose = TRUE, parallel_over = "everything")
 
 rmse_stats <- metric_set(rmse)
 ```
 
+There are some substantial differences in this chapter from its _APM_ counterpart: 
 
-no weka, xgboost, rulefit, no party
+ * As mentioned in the Preface, there are no `r pkg(RWeka)` models in tidymodels. Currently, there are no conditional interface trees either (but this will change soon). 
+ 
+ * Extreme gradient boosting, aka xgboost, has become the _de facto_ method for fitting boosted tree ensembles. The `r pkg(gbm)` package won't be used here. 
+ 
+ * A new rule-based model, called RuleFit, has become available. 
+
+
+The R packages used in this chapter are: `r pkg_text(c("tidymodels", "rpart", "baguette", "ranger", "Cubist", "xrf", "xgboost"))`. 
+
 
 ## Basic Regression Trees
 
-```{r chapter-08-cart}
+Single regression trees are created using the `decision_tree()` function in `r pkg(parsnip)` along with the `"rpart"` engine. We'll manually create a grid: 
+
+```{r chapter-08-cart, cache = caching}
 cart_spec <- 
   decision_tree(cost_complexity = tune(), min_n = tune()) %>% 
   set_engine("rpart") %>% 
@@ -62,7 +76,7 @@ cart_wflow <-
   add_recipe(solubility_rec)
 
 cart_grid <-
- tidyr::crossing(cost_complexity = 10 ^ seq(-5,-1, length = 20),
+ tidyr::crossing(cost_complexity = 10 ^ seq(-4,-1, length = 20),
                  min_n = 5 * (1:8)) 
 cart_tune <-
   cart_wflow %>%
@@ -73,16 +87,18 @@ autoplot(cart_tune)
 
 ## Regression Model Trees
 
-
+These methods were all implemented in the `r pkg(RWeka)` package and are not accessible via tidymodels. 
 
 
 ## Rule-Based Models
+
+Simple rule-based models based on a single model tree can be fit using the `r pkg(rules)` package and the `"Cubist"` engine. There are no tuning parameters for this simple version of the Cubist model. 
 
 ```{r chapter-08-cubist-single}
 library(rules)
 
 reg_rules_spec <- 
-  cubist_rules(committees = 1, neighbors = tune()) %>% 
+  cubist_rules() %>% 
   set_engine("Cubist") 
 
 reg_rules_wflow <- 
@@ -90,18 +106,17 @@ reg_rules_wflow <-
   add_model(reg_rules_spec) %>% 
   add_recipe(solubility_rec)
 
-reg_rules_grid <- tibble(neighbors = 0:9) 
-
 reg_rules_tune <-
   reg_rules_wflow %>%
-  tune_grid(solubility_folds, grid = reg_rules_grid, control = gd_ctrl, metrics = rmse_stats)
+  fit_resamples(solubility_folds, control = rs_ctrl, metrics = rmse_stats)
 
-autoplot(reg_rules_tune)
+show_best(reg_rules_tune)
 ```
 
 
 ## Bagged Trees
 
+Bagged models are facilitated by the `r pkg(parsnip)`-adjacent `r pkg(baguette)` package. For trees, the `bag_tree()` function can be coupled with the `"rpart"` engine (there are also bagging functions for MARS and rules). While this function has the same arguments as `decision_tree()`, there isn't much value in tuning them since the trees in the ensemble should be as deep as possible. Here, the model is only resampled. Note that the number of trees in the ensemble are specified via an engine-specific argument. 
 
 ```{r chapter-08-bagged-cart, cache = caching}
 library(baguette)
@@ -117,16 +132,24 @@ bag_cart_wflow <-
   add_recipe(solubility_rec)
 
 set.seed(1292)
-bag_cart_tune <-
+bag_cart_resamp <-
   bag_cart_wflow %>%
   fit_resamples(solubility_folds, control = rs_ctrl, metrics = rmse_stats)
+
+collect_metrics(bag_cart_resamp)
 ```
 
 
 ## Random Forests
 
+There are random forest engines for `"ranger"` and `"randomForest"` via the `rand_forest()` function. Since `mtry` is a function of the number of predictors, the default range for this parameter is unknown and, especially if a recipe is used, it cannot be known until the model is ready to be fit. As such, a message is generated saying:
 
-```{r chapter-08-rf, cache = caching}
+> `Creating pre-processing data to finalize unknown parameter: mtry`
+
+This simply means that the software figured out a good upper value for `mtry`. This is normal. 
+
+
+```{r chapter-08-rf, cache = caching, fig.height=4}
 rf_spec <- 
   rand_forest(mtry = tune(), min_n = tune(), trees = 1000) %>% 
   set_engine("ranger") %>% 
@@ -148,6 +171,7 @@ autoplot(rf_tune)
 
 ## Boosting
 
+As previously mentioned, xgboost has become the most used boosting method. The implementation in the `r pkg(xgboost)` package has a large number of tuning parameters. This may cause the training time to be long, especially with grid search, although good tuning parameter values are not difficult to find. Here, we'll once again use Bayesian Optimization to generate an initial grid of eight values then iterative try to find better results over 10 iterations. 
 
 ```{r chapter-08-xgb, cache = caching}
 xgb_spec <- 
@@ -175,9 +199,13 @@ xgb_bo <-
 autoplot(xgb_bo, type = "performance")
 ```
 
+```{r chapter-08-xgb-best}
+show_best(xgb_bo)
+```
 
 ## Cubist
 
+The `cubist_rules()` function can be used again to fit rule-based ensemble models. The two main parameters are the number of committees (similar to boosting iterations) and how many neighbors (if any) are used in the _post hoc_ correction. 
 
 ```{r chapter-08-cubist, cache = caching}
 cubist_spec <- 
@@ -199,7 +227,7 @@ cubist_tune <-
 autoplot(cubist_tune)
 ```
 
-
+Previously, the newer RuleFit model was mentioned. This fits an initial set of trees and these trees are used to generate a pool of binary features based on rules. These are then used as features in a `glmnet` model. This model has all the parameters of xgboost plus a `penalty` parameters for $L_1$ regularization. We will once again use Bayesian Optimization to find good values as an alternative to basic grid search. 
 
 ```{r chapter-08-rule-fit, cache = caching}
 rulefit_spec <- 
@@ -225,7 +253,7 @@ rulefit_bo <-
     solubility_folds,
     param_info = rulefit_param,
     initial = 10,
-    iter = 25,
+    iter = 15,
     control = bo_ctrl, 
     metrics = rmse_stats
   )
@@ -233,9 +261,18 @@ rulefit_bo <-
 autoplot(rulefit_bo, type = "performance")
 ```
 
+The top results for RuleFit are: 
+
+```{r chapter-08-rule-fit-best}
+show_best(rulefit_bo)
+```
 
 ```{r chapter-08-teardown, include = FALSE}
 if (grepl("mingw32", R.Version()$platform)) {
  stopCluster(cl)
 } 
+
+save(rulefit_bo, cubist_tune, xgb_bo, rf_tune, bag_cart_resamp, 
+     reg_rules_tune, cart_tune, cubist_wflow,
+     version = 2, compress = "xz", file = "RData/chapter_08.RData")
 ```
