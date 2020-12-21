@@ -22,6 +22,9 @@ if (!grepl("mingw32", R.Version()$platform)) {
 }
 ```
 
+This case study examines a large number of models that predict a property of concrete mixtures. The analysis here will be similar to the _APM_ approach but will illustrate two techniques: using workflow sets to launch models and efficient triage of models using race methods. This chapter uses a lot of R packages: `r pkg_text(c("tidymodels", "rules", "Cubist", "tbd", "AppliedPredictiveModeling", "glmnet", "nnet", "earth", "kernlab", "kknn", "baguette", "rpart", "ranger", "xgboost"))`.
+
+There are two versions of the data. Like _APM_, we'll use the version where the concrete ingredients are represented as proportions in a mixture. There are some replicated mixtures so we create a distinct set of mixtures and average the outcome data across replicates.  
 
 ```{r chapter-10-data-prep}
 data("concrete", package = "AppliedPredictiveModeling")
@@ -29,8 +32,8 @@ data("concrete", package = "AppliedPredictiveModeling")
 mixture_means <- 
  mixtures %>% 
  clean_names() %>% 
- group_by(cement, blast_furnace_slag, fly_ash, water, superplasticizer, 
-          coarse_aggregate, fine_aggregate, age) %>% 
+ group_by(cement, blast_furnace_slag, fly_ash, superplasticizer, 
+          coarse_aggregate, fine_aggregate, water, age) %>% 
  summarize(
   compressive_strength = mean(compressive_strength), 
   .groups = "drop"
@@ -38,6 +41,7 @@ mixture_means <-
  ungroup()
 ```
 
+The data splitting strategy is the same as _APM_ but different splits and resamples of the data are created (since the underlying code is different): 
 
 ```{r chapter-10-data-splitting}
 set.seed(1000)
@@ -50,12 +54,13 @@ concrete_folds <- vfold_cv(concrete_train, strata = compressive_strength,
                            repeats = 5)
 ```
 
+One way to use workflow sets is to create a set of _preprocessors_ and models, then combinatorially combine them. The preprocessors can be formulas or recipes (depending on what is needed). 
+
+We create two recipes. Once does not feature engineering and simple centers and scales the predictors. The second computes an additional set of predictors that includes all two-way interactions as well as quadratic terms.  
 
 ```{r chapter-10-recipes}
-basic_recipe <- recipe(compressive_strength ~ ., data = concrete_train)
-
 normalized_rec <- 
- basic_recipe %>% 
+ recipe(compressive_strength ~ ., data = concrete_train) %>% 
  step_normalize(all_predictors()) 
 
 poly_recipe <- 
@@ -65,6 +70,7 @@ poly_recipe <-
            coarse_aggregate, fine_aggregate, age)
 ```
 
+Next, a long list of model specifications are created. 
 
 ```{r chapter-10-models}
 linear_reg_spec <- 
@@ -77,7 +83,7 @@ nnet_spec <-
  set_mode("regression")
 
 mars_spec <- 
- mars(num_terms = tune(), prod_degree = tune(), prune_method = "none") %>% 
+ mars(prod_degree = tune()) %>%  #<- use GCV to choose terms
  set_engine("earth") %>% 
  set_mode("regression")
 
@@ -120,14 +126,9 @@ xgb_spec <-
 cubist_spec <- 
  cubist_rules(committees = tune(), neighbors = tune()) %>% 
  set_engine("Cubist") 
-
-rulefit_spec <- 
- rule_fit(tree_depth = tune(), learn_rate = tune(), loss_reduction = tune(), 
-          min_n = tune(), sample_size = tune(), trees = tune(), penalty = tune()) %>% 
- set_engine("xrf") %>% 
- set_mode("regression")
 ```
 
+The `workflow_set()` function creates combinations of these objects. First, a set of models that require no preprocessing are created using a simple formula: 
 
 ```{r chapter-10-make-workflows}
 no_pre_proc <- 
@@ -137,7 +138,12 @@ no_pre_proc <-
                 RF = rf_spec, boosting = xgb_spec, Cubist = cubist_spec),
   cross = TRUE
  )
+no_pre_proc
+```
 
+Next, another set is made for the models that require normalization (and nothing else):
+
+```{r chapter-10-norm-workflows}
 normalized <- 
  workflow_set(
   preproc = list(normalized = normalized_rec), 
@@ -145,7 +151,11 @@ normalized <-
                 KNN = knn_spec, 'neural network' = nnet_spec),
   cross = TRUE
  )
+```
 
+Finally, we combine the models that might benefit from the interactions and nonlinear terms with the appropriate recipe. 
+
+```{r chapter-10-quad-workflows}
 with_features <- 
  workflow_set(
   preproc = list(full_quad = poly_recipe), 
@@ -154,7 +164,24 @@ with_features <-
  )
 ```
 
+From here, there are a few approaches. If grid search is acceptable for all of these models, the workflow sets could be combined using `bind_rows()` and the `workflow_map()` function can be used to automate that process. However, there are some cases where we would avoid that procedure: 
+
+ * If the default tuning parameter ranges are not acceptable, we might want to do something special for a particular model. 
+ 
+ * As was seen previously, some models with many tuning parameters might be better served using Bayesian optimization or some other iterative method for optimizing the tuning parameters. 
+
+`workflow_map()` can be applied separately for those cases. 
+
+For our analysis, the majority of the models will be evaluated using grid search. The neural network  polynomial SVM will use alternate parameter sets. An initial run runs all of the other models, then the results of these two exceptions are merged back in at the end. 
+
+To efficiently appraise these models, a technique called _racing_ will be used. This evaluates the tuning grid over an initial handful of resamples, then conducts an statistical analysis to see if there are any parameter combinations that can be discarded. As each new resample is evaluated, additional analyses are conducted and more parameters are potentially removed. This can greatly reduce the number of model that are assessed and reduce execution time. 
+
+We'll set the control function to start the interim analysis after the first five resamples. To see more details on how the process proceeds, use the `verbose_elim` option in `control_race()`. 
+
+When using the `workflow_map()` function, the same function is applied to the workflows of interest. Here, the `finetune::tune_race_anova()` is used for the largest batch of runs. The `seed` argument controls the random number stream so that each model with is processed with this random number seed. 
+
 ```{r chapter-10-workflow-fits, message = FALSE, cache = caching}
+library(finetune)
 race_ctrl <- control_race(save_pred = TRUE, parallel_over = "everything", 
                           burn_in = 5)
 
@@ -164,16 +191,11 @@ all_workflows <-
 set.seed(1002)
 workflow_fits <- 
  all_workflows %>% 
- filter(!(model %in% c("bag_tree", "svm_poly", "mars", "mlp"))) %>% 
+ filter(!(model %in% c("svm_poly", "mlp"))) %>% 
  workflow_map(fn = "tune_race_anova", seed = 1003, 
               resamples = concrete_folds, grid = 50, control = race_ctrl)
 
-resamp_ctrl <- control_race(save_pred = TRUE)
-bag_fit <- 
- all_workflows %>% 
- filter(model == "bag_tree") %>% 
- workflow_map(fn = "fit_resamples", seed = 1003, resamples = concrete_folds, 
-              control = resamp_ctrl)
+# ------------------------------------------------------------------------------
 
 svm_p_param <- 
  svm_p_spec %>% 
@@ -188,6 +210,8 @@ svm_p_fit <-
               resamples = concrete_folds, grid = 50, control = race_ctrl, 
               param_info = svm_p_param)
 
+# ------------------------------------------------------------------------------
+
 nnet_param <- 
  nnet_spec %>% 
  parameters() %>% 
@@ -201,26 +225,104 @@ nnet_fit <-
               resamples = concrete_folds, grid = 50, control = race_ctrl, 
               param_info = nnet_param)
 
-mars_param <- 
- mars_spec %>% 
- parameters() %>% 
- update(num_terms = num_terms(c(2, 20)))
-
-set.seed(1002)
-mars_fit <- 
- all_workflows %>% 
- filter(model == "mars") %>% 
- workflow_map(fn = "tune_race_anova", seed = 1003, 
-              resamples = concrete_folds, grid = 50, control = race_ctrl, 
-              param_info = mars_param)
+# ------------------------------------------------------------------------------
 
 workflow_fits <- 
  workflow_fits %>% 
- bind_rows(bag_fit, svm_p_fit, mars_fit, nnet_fit)
+ bind_rows(svm_p_fit, nnet_fit)
 ```
 
+To get a quick assessment of the results, the `autoplot()` function can be used: 
+
+
 ```{r chapter-10-workflow-eval}
-autoplot(workflow_fits, rank_metric = "rmse", std_errs = qnorm(0.95))
-rank_results(workflow_fits, rank_metric = "rmse") %>% 
- filter(.metric == "rmse")
+autoplot(workflow_fits, rank_metric = "rmse", metric = "rmse")
 ```
+
+There is a fair number of differences between the models, which is most likely due to using five repeats of cross-validation. Let's look at the Cubist results since it would have better extrapolation prperties than the high performaning tree-based models. 
+
+```{r chapter-10-cb, message = FALSE}
+cb_tune <- pull_workflow_result(workflow_fits, id = "simple_Cubist")
+cb_best <- select_best(cb_tune, metric = "rmse")
+cb_best
+regression_plots(cb_tune, parameters = cb_best)
+```
+
+We can finalize the model and refit ont eh entire training set. 
+
+```{r chapter-10-cb-fit, message = FALSE}
+cb_final_wflow <- 
+  workflow_fits %>% 
+  pull_workflow(id = "simple_Cubist") %>% 
+  finalize_workflow(cb_best)
+
+cb_res <-
+  cb_final_wflow %>% 
+  last_fit(split = concrete_split)
+
+cb_fit <- cb_res$.workflow[[1]]
+```
+
+As in _APM_, we use the model to predict new concrete mixtures that will have better compressive strength. The function below checks the range of the mixture values (minus water), calculates the amount of water that goes into the mixture, then uses the Cubist model to make the prediction. The negative sign on the return value is because the base R `optim()` function minimizes the outcome value. 
+
+```{r chapter-10-cb-predict}
+concrete_pred <- function(x, mod) {
+  if(any(x[-7] < 0 | x[-7] > 1 | sum(x) > 0.95)) {
+    return(10^38)
+  } 
+  x <- c(x, 1 - sum(x))
+
+  tmp <- as.data.frame(t(x))
+  names(tmp) <- names(mixture_means)[1:7]
+  tmp$age <- 28
+  -predict(mod, tmp)$.pred
+}
+```
+
+For starting values, a space-filling design is used to create a diverse set of mixtures. The `r pkg(DiceDesign)` package, which also powers `dials::grid_latin_hypercube()`, generates variables between zero and one for all the ingredients. These design points are normalized to add to one, then any points with less than 5% water are discarded. 
+
+```{r chapter-10-starting}
+set.seed(1004)
+starting_points <- DiceDesign::lhsDesign(10, dimension = 7)$design
+starting_points <- t(apply(starting_points, 1, function(x)x/sum(x)))
+colnames(starting_points) <- names(mixture_means)[1:7]
+starting_points <- 
+  tibble::as_tibble(starting_points) %>% 
+  filter(water > 0.05)
+
+opt_results <- 
+  starting_points %>% 
+  mutate(water = NA_real_,
+         prediction = NA_real_)
+```
+
+For each starting value, the Nelder-Mead method is used to search for largest compressive strength prediction within the design space. The largest measured outcome in the training set was `r max(concrete_train$compressive_strength)` MPa. The results predicted show values larger than this that could be measured. 
+
+
+```{r chapter-10-nmsm, cache = caching}
+for(i in 1:nrow(opt_results)) {
+  strt <- 
+    opt_results %>% 
+    dplyr::select(cement:fine_aggregate) %>% 
+    dplyr::slice(i) %>% 
+    as_vector()
+  results <- optim(strt,
+                   concrete_pred,
+                   method = "Nelder-Mead",
+                   control=list(maxit=5000),
+                   mod = cb_fit)
+  opt_results$prediction[i] <- -results$value
+  for (j in 1:6) {
+    opt_results[i, j] <- results$par[j]
+  }
+}
+
+opt_results %>% 
+  select(prediction, cement:water) %>% 
+  arrange(desc(prediction)) %>% 
+  rowwise() %>% 
+  mutate(water = 1 - sum(c_across(cement:fine_aggregate)))
+```
+
+
+

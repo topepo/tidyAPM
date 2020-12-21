@@ -86,3 +86,6 @@ conflict_prefer("step",   winner = "recipes", quiet = TRUE)
 conflict_prefer("tune",   winner = "tune",    quiet = TRUE)
 conflict_prefer("pls",    winner = "plsmod",  quiet = TRUE)
 
+# ------------------------------------------------------------------------------
+
+source("extras/regression_plots.R")
