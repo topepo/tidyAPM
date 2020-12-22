@@ -11,7 +11,8 @@ rmd_files: [
   "chapter-07.Rmd",
   "chapter-08.Rmd",
   "chapter-09.Rmd",
-  "chapter-10.Rmd"
+  "chapter-10.Rmd",
+  "chapter-11.Rmd"
 ]
 
 before_chapter_script: "_common.R"
