@@ -85,6 +85,7 @@ conflict_prefer("rename", winner = "dplyr",   quiet = TRUE)
 conflict_prefer("step",   winner = "recipes", quiet = TRUE)
 conflict_prefer("tune",   winner = "tune",    quiet = TRUE)
 conflict_prefer("pls",    winner = "plsmod",  quiet = TRUE)
+conflict_prefer("map",    winner = "purrr",   quiet = TRUE)
 
 # ------------------------------------------------------------------------------
 
