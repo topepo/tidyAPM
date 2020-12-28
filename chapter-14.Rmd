@@ -1,0 +1,222 @@
+# Classification Trees and Rule-Based Models
+
+```{r chapter-14-startup, include = FALSE}
+knitr::opts_chunk$set(fig.path = "figures/")
+library(rpart)
+library(ranger)
+library(baguette)
+library(C50)
+library(rlang)
+library(vctrs)
+library(tidymodels)
+
+caching <- TRUE
+
+cores <- parallel::detectCores()
+if (!grepl("mingw32", R.Version()$platform)) {
+ library(doMC)
+ registerDoMC(cores = cores)
+} else {
+  library(doParallel)
+  cl <- makePSOCKcluster(cores)
+  registerDoParallel(cl)
+}
+
+source("extras/overlay_roc_curves.R")
+```
+
+
+The R packages used in this chapter are: `r pkg_text(c("tidymodels", "C50", "rpart", "baguette",
+"xgboost", "ranger"))`. 
+
+
+
+```{r chapter-14-data}
+library(tidymodels)
+data(grants)
+
+ls(pattern = "grants")
+
+load("RData/grants_split.RData")
+
+grants_split
+nrow(grants_test)
+```
+
+
+
+##  Basic Classification Trees
+
+
+```{r chapter-14-cart, cache = caching}
+cart_spec <-
+ decision_tree(cost_complexity = tune(), min_n = tune()) %>% 
+ set_mode("classification") %>% 
+ set_engine("rpart")
+
+cart_grid <-
+        tidyr::crossing(
+          cost_complexity = 10 ^ seq(-4, 0, length.out = 20),
+          min_n = (1:10) * 2
+        )
+
+cart_wflow <- 
+ workflow() %>% 
+ add_model(cart_spec) %>% 
+ add_variables(outcomes = class, predictors = everything())
+
+gd_ctrl <- control_grid(save_pred = TRUE, save_workflow = TRUE, 
+                             parallel_over = "everything")
+
+set.seed(1401)
+cart_tune <- 
+ cart_wflow %>% 
+ tune_grid(resamples = grants_split, grid = cart_grid,
+              control = gd_ctrl)
+```
+
+## Rule-Based Models
+
+
+```{r chapter-14-c5-rules, cache = caching}
+library(rules)
+rules_spec <-
+ C5_rules(min_n = tune()) %>% 
+ set_mode("classification") %>% 
+ set_engine("C5.0")
+
+rules_grid <- tibble(min_n = 1:10)
+
+rules_wflow <- 
+ workflow() %>% 
+ add_model(rules_spec) %>% 
+ add_variables(outcomes = class, predictors = everything())
+
+set.seed(1401)
+rules_tune <- 
+ rules_wflow %>% 
+ tune_grid(resamples = grants_split, grid = rules_grid,
+              control = gd_ctrl)
+```
+
+## Bagged Trees
+
+```{r chapter-14-bagging-cart, cache = caching}
+cart_bag_spec <-
+ bag_tree() %>% 
+ set_mode("classification") %>% 
+ set_engine("rpart")
+
+cart_bag_wflow <- 
+ workflow() %>% 
+ add_model(cart_bag_spec) %>% 
+ add_variables(outcomes = class, predictors = everything())
+
+rs_ctrl <- control_resamples(save_pred = TRUE, save_workflow = TRUE)
+
+set.seed(1401)
+cart_bag_tune <- 
+ cart_bag_wflow %>% 
+ fit_resamples(resamples = grants_split,  control = rs_ctrl)
+```
+
+
+```{r chapter-14-bagging-rules, cache = caching}
+rules_bag_spec <-
+ bag_tree() %>% 
+ set_mode("classification") %>% 
+ set_engine("rpart")
+
+rules_bag_wflow <- 
+ workflow() %>% 
+ add_model(rules_bag_spec) %>% 
+ add_variables(outcomes = class, predictors = everything())
+
+rs_ctrl <- control_resamples(save_pred = TRUE, save_workflow = TRUE)
+
+set.seed(1401)
+rules_bag_tune <- 
+ rules_bag_wflow %>% 
+ fit_resamples(resamples = grants_split,  control = rs_ctrl)
+```
+
+## Random Forests
+
+
+```{r chapter-14-rf, cache = caching}
+rf_spec <-
+ rand_forest(mtry = tune(), min_n = tune(), trees = 100) %>% 
+ set_mode("classification") %>% 
+ set_engine("ranger")
+
+rf_wflow <- 
+ workflow() %>% 
+ add_model(rf_spec) %>% 
+ add_variables(outcomes = class, predictors = everything())
+
+set.seed(1401)
+rf_tune <- 
+ rf_wflow %>% 
+ tune_grid(resamples = grants_split, grid = 25, control = gd_ctrl)
+```
+
+
+
+## Boosting
+
+
+```{r chapter-14-xgb, cache = caching}
+xgboost_spec <-
+ boost_tree(min_n = tune(), trees = tune(), tree_depth = tune(), 
+            learn_rate = tune(), loss_reduction = tune(), sample_size = tune()) %>% 
+ set_mode("classification") %>% 
+ set_engine("xgboost")
+
+xgb_rec <- 
+ recipe(class ~ ., data = grants_other) %>% 
+ step_dummy(all_nominal(), -class) %>% 
+ step_zv(all_predictors())
+
+xgboost_wflow <- 
+ workflow() %>% 
+ add_model(xgboost_spec) %>% 
+ add_recipe(xgb_rec)
+
+set.seed(1401)
+xgboost_tune <- 
+ xgboost_wflow %>% 
+ tune_grid(resamples = grants_split, grid = 25, control = gd_ctrl)
+```
+
+
+## C5.0
+
+
+
+```{r chapter-14-c50, cache = caching}
+C5_spec <-
+ boost_tree(min_n = tune(), trees = tune()) %>% 
+ set_mode("classification") %>% 
+ set_engine("C5.0")
+
+C5_wflow <- 
+ workflow() %>% 
+ add_model(C5_spec) %>% 
+ add_variables(outcomes = class, predictors = everything())
+
+set.seed(1401)
+C5_tune <- 
+ C5_wflow %>% 
+ tune_grid(resamples = grants_split, grid = 25, control = gd_ctrl)
+```
+
+
+
+```{r chapter-14-teardown, include = FALSE}
+if (grepl("mingw32", R.Version()$platform)) {
+ stopCluster(cl)
+} 
+
+save(C5_tune, cart_bag_tune, cart_tune, rf_tune, rules_bag_tune, rules_tune, xgboost_tune,
+     version = 2, compress = "xz", file = "RData/chapter_14.RData")
+```

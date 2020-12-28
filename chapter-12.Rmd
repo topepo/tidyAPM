@@ -1,6 +1,6 @@
 # Discriminant Analysis and Other Linear Classification Models
 
-```{r chapter-10-startup, include = FALSE}
+```{r chapter-12-startup, include = FALSE}
 knitr::opts_chunk$set(fig.path = "figures/")
 library(MASS)
 library(mixOmics)
@@ -32,6 +32,9 @@ The R packages used in this chapter are: `r pkg_text(c("tidymodels", "MASS", "di
 
 ## Case Study: Predicting Successful Grant Applications
 
+These data are supplied in the GitHub repository. The object `grants_testing` holds the test set while `grants_other` contains the data used for modeling and initial evaluation. 
+
+We recreated the same split used in _APM_ here. However, the nature of this data splitting scheme is fairly irregular. For this reason, a non-standard `r pkg(rsample)` method was used; the results are the same as those produced by a more standard application of `initial_split()`. The code to create the `grants_split` object is found in [`extras/grants_splits.R`](https://github.com/topepo/tidyAPM/tree/main/extras/grants_splits.R).   
 
 ```{r chapter-12-data}
 library(tidymodels)
@@ -44,16 +47,19 @@ load("RData/grants_split.RData")
 grants_split
 nrow(grants_test)
 ```
-
+`grants_split` is a validation-type resampling object. As noted in _APM_, $n = `r nrow(analysis(grants_split$splits[[1]]))`$ grants is use for model fitting while we predict $n = `r nrow(assessment(grants_split$splits[[1]]))`$ grants to measure model performance. We create the final model using both of these data sets. The final test set contains $n = `r nrow(grants_test)`$ grants are used as the final test set assessment.  
 
 ## Logistic Regression
+
+An initial simple logistic regression model is fit to the data. Two  recipes removes zero variance predictors and near-zero predictors, respectively. In these recipes, the indicator variables for the factor predictors are created prior to these filters. The opposite order could have been used and it would likely to yield somewhat different results.  Unlike `r pkg(caret)`, where the preprocessing order is fixed, the recipe gives the user more options. This is a feature but illustrates that the order of operations may not be obvious. 
+
+Since there are no tuning parameters, both recipes are simply resampled. A workflow set is used: 
 
 ```{r chapter-12-logistic, cache = caching}
 library(tbd)
 
 rs_ctrl <- control_resamples(save_pred = TRUE, save_workflow = TRUE, 
                              parallel_over = "everything")
-
 
 zv_rec <- 
  recipe(class ~ ., data = grants_other) %>% 
@@ -84,15 +90,17 @@ model_predictions <-
 
 map(logistic_wflow_set$result, collect_metrics) 
 ```
+The results show that using all of the predictors in the model has a significant negative effect on the model. Note that there are no standard errors associated with the results. This is a consqeuence of the validation set being a single resample. 
 
+A function called `overlay_roc_curves()` can be used to emulate the ROC curve figures shown in _APM_. The implementation is not complex and the code is found in the [`extras`](https://github.com/topepo/tidyAPM/blob/main/extras/overlay_roc_curves.R) directory. The inputs are a data frame of holdout predictors and a character string for the workflow ID that should be highlighted. All other curves are shown in a transparent grey color.  
 
 ```{r chapter-12-fig-04}
 overlay_roc_curves(model_predictions, highlight = "nzv_logistic") 
 ```
 
-
 ## Linear Discriminant Analysis
 
+A similar strategy is used for linear discriminant analysis. The `discrim` package has a set of discriminant models; we will use `discrim_linear()` to access the `lda()` function in the `r pkg(MASS)` package: 
 
 ```{r chapter-12-lda, cache = caching}
 library(discrim)
@@ -118,6 +126,7 @@ model_predictions <-
 map(lda_wflow_set$result, collect_metrics) 
 ```
 
+We then highlight the better of the two LDA models. Again, the near-zero variance filter has a positive effect on the results.  
 
 ```{r chapter-12-fig-09}
 overlay_roc_curves(model_predictions, highlight = "nzv_LDA") 
@@ -125,7 +134,7 @@ overlay_roc_curves(model_predictions, highlight = "nzv_LDA")
 
 ## Partial Least Squares Discriminant Analysis
 
-
+Similarly, the plsmod package contains the model definitions for the PLS discriminant analysis. Here, the number of PLS components is tuned. 
 
 ```{r chapter-12-pls, cache = caching}
 library(plsmod)
@@ -136,7 +145,7 @@ pls_spec <-
  set_engine("mixOmics")
 
 gd_ctrl <- control_grid(save_pred = TRUE, save_workflow = TRUE, 
-                             parallel_over = "everything")
+                        parallel_over = "everything")
 
 pls_wflow_set <- 
  workflow_set(
@@ -149,6 +158,7 @@ pls_wflow_set <-
  
 ```
 
+To overlay the effect of the two filters, we extra the metrics, stack them, then a basic `r pkg(ggplot2)` plot is created: 
 
 ```{r chapter-12-fig-12}
 map(pls_wflow_set$result, collect_metrics) %>% 
@@ -160,6 +170,7 @@ map(pls_wflow_set$result, collect_metrics) %>%
  labs(x = "Number of PLS Components", y = "roc_auc")
 ```
 
+The better variant of the model is once again the more heavily filtered recipe: 
 
 ```{r chapter-12-fig-13}
 
@@ -176,8 +187,7 @@ overlay_roc_curves(model_predictions, highlight = "nzv_PLS")
 
 ## Penalized Models
 
-
-
+As before, the `glmnet` model is the focus for penalized models. The penalty and mixture parameters are optimized using a pre-defined grid. Since this model does feature selection, it is coupled with the more lightly filtered recipe. 
 
 ```{r chapter-12-glmnet, cache = caching}
 glmnet_spec <-
@@ -211,10 +221,13 @@ model_predictions <-
  bind_rows(model_predictions)
 ```
 
+The results show that there are multiple penalties that have about the same performance (for different mixtures of penalty types). For a few settings, the amount of penalization removes all of the predictors thereby producing an area under the curve of 0.50.  
 
 ```{r chapter-12-fig-16a}
 autoplot(glmnet_tune, metric = "roc_auc")
 ```
+
+For some probability threshold, this model has the best results so far. 
 
 ```{r chapter-12-fig-16b}
 overlay_roc_curves(model_predictions, highlight = "glmnet") 
@@ -222,9 +235,7 @@ overlay_roc_curves(model_predictions, highlight = "glmnet")
 
 ## Nearest Shrunken Centroids
 
-
-
-
+This particular model has not been enabled in the tidymodels packages to date. 
 
 
 ```{r chapter-12-teardown, include = FALSE}
@@ -233,7 +244,6 @@ if (grepl("mingw32", R.Version()$platform)) {
 } 
 
 save(logistic_wflow_set, lda_wflow_set, pls_wflow_set, glmnet_tune,
-     model_predictions,
      version = 2, compress = "xz", file = "RData/chapter_12.RData")
 ```
 

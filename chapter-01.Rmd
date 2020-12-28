@@ -1,3 +1,115 @@
 # Introduction
 
-There are not an real analyses in this chapter. There isn't anything to reproduce. 
+We wrote _APM_ from 20010-2012. A lot has changes since then. There are new modeling methods and better implementations of some existing models. There are also some techniques that have been deprecated or are not as relevant as they once were. Needless to say, if we were writing this book today, it would be somewhat different. 
+
+Additionally, tidymodels is not `r pkg(caret)`. It is more modular and not intended to contain every possible modeling method in R. Luckily, it is not hard to add modeling methods to the system. There are already user-generated packages that fill in unmet needs that the canonical tidymodels packages not facilitate (e.g, `r pkg(modeltime)`, `r pkg(treesnip)`, and others). also, tidymodels can do a lot more than `r pkg(caret)`. For example, there are far more preprocessing and feature engineering options in the new system. These pre-modeling techniques can also be tuned along with the model parameters. tidymodels has additional tuning methods and other features.  
+
+As a result, this companion is not a 1:1 translation of `r pkg(caret)` code to tidymodels. In some cases, we use a different optimization technique to choose tuning parameter values. In others, a different package might be used to fit a model described in _APM_. Also, there is a suite of models that `r pkg(caret)` supports but tidymodels do not. The `r pkg(RWeka)` packages are not part of the canonical tidymodels system, because of their use of `r pkg(rJava)` (which can be problematic to support on some operating systems).  
+
+There are not an real analyses in this chapter of _APM_ so there is not code to reproduce. Instead, start with a comparison between the old and new software then discuss some practical issues for using this website. 
+
+## A high-level comparison of caret and tidymodels packages
+
+`r pkg(caret)` was written in 2005. To put that in context, in 2005, R didn't support 64-bit systems nor did it require packages to have a namespace until late 2011. I initially had to use `cvs` for version control and GitHub would not be launched for another three years. The `Rd` help and namespace files were _manually written_. In many ways, creating and managing R packages was much more difficult at that time. 
+
+I had created internally-used R packages (and more internal S-Plus packages). While `r pkg(caret)` was part of my work at Pfizer, it was a somewhat of a side job inside my regular work. 
+
+This is a roundabout way of saying that I know a lot more now about software engineering and, especially, user-interface design. Having used `r pkg(caret)` in my job and seen how many people interact with it, there were some choices that I would make differently if I were to ever start over. 
+
+Also, the package became very difficult to support. Partially because it wrapped so many models, but mostly about how I designed it. The latter issue was mostly driven by the scarcity of time that I had to work on `r pkg(caret)`. If I were to do something similar again, some serious design choices were required.  
+
+### Overall interface
+
+Overall: 
+
+* tidymodels requires the user to write more code than `r pkg(caret)` but...
+
+* On average, tidymodels does more than `r pkg(caret)`. 
+
+One of the main technical improvements in tidymodels is that it separates the _specification_ of the model from the _fitting_ of the model. While this leads to more code, it enables more powerful tools. 
+
+In many ways, `r pkg(caret)` is too simplistic and makes too many choices for the user; it is too easy to "go on autopilot" when fitting models. Also, because `r pkg(caret)` has such a simple interface, it required some trick-like conventions. For example, if you used a model that does not require dummy variables (e.g. tree-based models), you had to choose to make them or not. To do this, the user chooses between `r pkg(caret)`'s formula or non-formula method. That's not intuitive or obvious and it generated a large number of user questions and bug reports.
+
+Let's look at specific differences in modeling and preprocessing data. 
+
+### Preprocessing
+
+Data preprocessing in tidymodels is head and shoulders better than `r pkg(caret)` 
+
+`r pkg(caret)` has a much smaller set of techniques available. These were purposefully designed to be applied in a strict order so that fewer user errors would occur (e.g. a Box-Cox transformation after centering the data). It also tends to treat all predictors the same since it was a lot of work to only apply one method to a subset of predictors. Again, `r pkg(caret)` makes a lot of choices for the user. 
+
+While you can still use simple R formulas to specify variables, tidymodels relies on recipes and recipes are more comprehensive, powerful, extensible, and expressive. 
+
+The downside to that is, that in `r pkg(caret)`, the code to transform and normalize all of the predictors used this option
+
+```r
+ preProc = c("BoxCox", "center", "scale")
+```
+
+while an equivalent recipe is more protracted:
+
+```r
+recipe(y ~ ., data = training) %>% 
+  step_BoxCox(all_predictors()) %>% 
+  step_normalize(all_predictors())
+```
+
+In tidymodels, you get a huge improvement in available methodologies at the cost of slightly more complex code.  
+
+### Models
+
+As shown above, the caret model specification consists of a single argument: `method`. For example, to fit a random forest model using the `r pkg(ranger)` package: 
+
+```r
+ method = "ranger"
+```
+
+In tidymodels, a model specification is created: 
+
+```r
+rf_spec <-
+ rand_forest(mtry = tune(), min_n = tune(), trees = 1000) %>% 
+ set_mode("classification") %>% 
+ set_engine("ranger")
+```
+
+This is more code (objectively bad) but it allows the user to specify what to tune. The main function (`rand_forest()`) contains the main tuning parameters. However, _just about any other model parameter can be tuned_. For example, tuning the specialized regularization factor parameters, these are tagged for tuning in the same way via the `set_engine()` function. 
+As another example of how `r pkg(caret)` can be a little [kludgy](https://www.thefreedictionary.com/kludgy) is when you want to fit a single model. In `r pkg(caret)`, the resampling method is set to `"none"` whereas, in tidymodels, the simple `fit()` function is more straightforward and obvious. 
+
+### Overall thoughts
+
+All in all, we think that tidymodels will make you think more about how you are modeling your data (in a good way). 
+
+The tidymodels group is still working on is better user interfaces. For example, the `r pkg(usemodels)` package has functions that create tidymodels code for a given data set and model. For example, if you want to tune a K-nearest neighbor model to the Palmer penguin data, the user does need to type a lot of code: 
+
+```{r chapter-01-usemodels, echo = FALSE, fig.align='center', out.width="70%"}
+knitr::include_graphics("figures/usemodels.png")
+```
+
+Another interface, and one that is used here, is the idea of a workflow set. A workflow is a combination of data preprocesssing and a model. In some cases, for the same preprocessing, a collection of models is of interest. Rather than creating a large amount of code to do this, a workflow set can produce all of the combinations of preprocessors and workflows.
+
+## Things to know about running the code in this book
+
+While you can run this code from a terminal or any application, it is best used in the RStudio IDE by way of the RStudio project file. This file, named `tidyAPM.Rproj` is a good starting point to use this code. It initializes a new IDE window that has paths and other settings pre-loaded. When external files are used, these paths are relative to the working directory initialized by the project file. WE highly recommend that you take this approach when testing out the code. 
+
+Also, there are many packages used here and they are listed in the package `DESCRIPTION` file. To install them, install the `r pkg(devtools)` package and type `devtools:install()`. 
+
+Since so many packages are used, there are cases when two (or more) packages have a function of the same name. We resolve this in two ways: 
+
+ * There are some cases where we call the function by its namespace, such as `package::function()`. The ensures that we get the appropriate function. 
+
+* We also rely on the `r pkg(conflicted)` package to pick the the package that we want most often. For example, the base R function `filter()` does univariate smoothing while the `r pkg(dplyr)` function of the same name selects specific rows of a data frame. Rather than writing `dplyr::filter()` everywhere, the `r pkg(conflicted)` package lets us choose the default package to use (irregardless of the order in which they were loaded). 
+
+To see the function prioritization used by `r pkg(conflicted)`, see the file called `_common.R`. When creating this book, this file is executed before each chapter. You should consider doing the same so that the settings are the same as ours. 
+
+Finally, many of these analyses take a long time to execute (particularly those using the grant data in the classification chapters). Please be aware of this. One way that we compensate for this is to use parallel processing. Since the website content is generated locally on `r osVersion` using a computer with 10 cores and a lot of memory. We use the `r pkg(doMC)` package for this (using all cores). This may not be an option for you. This package is not available on Windows; use the `r pkg(doParallel)` package instead. Also, if you use many cores, there may not be enough memory available since the parallel workers require as much memory as the main R process. 
+
+## How to get help
+
+It's is a good idea to consider what I call [Yihui's Rule](https://yihui.org/en/2017/08/so-gh-email/) when thinking about getting help:  
+
+```{r chapter-01-help, echo = FALSE, fig.align='center', out.width="70%"}
+knitr::include_graphics("figures/getting_help.png")
+```
+
+I would suggest posting questions at [RStudio Community](https://community.rstudio.com/c/ml/15) or [StackOverflow](https://stackoverflow.com/questions/tagged/tidymodels) so that everyone can gain knowledge from your question and the answers. After that, put in an issue at the [GitHub repository](https://github.com/topepo/tidyAPM/issues) for this web page. 

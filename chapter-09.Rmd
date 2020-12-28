@@ -41,17 +41,16 @@ The `r pkg(tbd)` package enables a method for collecting workflow into a _workfl
 ```{r chapter-09-collect}
 library(tidymodels)
 library(tbd)
-results_list <- 
- list(
-  'bag' = bag_cart_resamp, 'cart' = cart_tune, 'cubist' = cubist_tune, 
-  'glmnet' = glmnet_tune, 'knn' = knn_tune, 'lasso' = lasso_tune, 
-  'ols' = lin_reg_tune, 'mars' = mars_tune, 'nnet' = nnet_bo, 
-  'pcr' = pcr_tune, 'pls' = pls_tune, 'model rules' = reg_rules_tune, 
-  'rf' = rf_tune, 'ridge' = ridge_tune, 'rulefit' = rulefit_bo, 
-  'svm (poly)' = svm_p_tune, 'svm (radial)' = svm_r_tune, 'xgb' = xgb_bo
- )
 
-solubility_res <- as_workflow_set(results_list)
+solubility_res <- 
+  as_workflow_set(
+    'bag' = bag_cart_resamp, 'cart' = cart_tune, 'cubist' = cubist_tune, 
+    'glmnet' = glmnet_tune, 'knn' = knn_tune, 'lasso' = lasso_tune, 
+    'ols' = lin_reg_tune, 'mars' = mars_tune, 'nnet' = nnet_bo, 
+    'pcr' = pcr_tune, 'pls' = pls_tune, 'model rules' = reg_rules_tune, 
+    'rf' = rf_tune, 'ridge' = ridge_tune, 'rulefit' = rulefit_bo, 
+    'svm (poly)' = svm_p_tune, 'svm (radial)' = svm_r_tune, 'xgb' = xgb_bo
+  )
 solubility_res
 ```
 

@@ -1,0 +1,229 @@
+# Nonlinear Classification Models
+
+```{r chapter-13-startup, include = FALSE}
+knitr::opts_chunk$set(fig.path = "figures/")
+library(nnet)
+library(kernlab)
+library(discrim)
+library(kknn)
+library(mda)
+library(klaR)
+library(tidymodels)
+library(tbd)
+
+caching <- TRUE
+
+cores <- parallel::detectCores()
+if (!grepl("mingw32", R.Version()$platform)) {
+ library(doMC)
+ registerDoMC(cores = cores)
+} else {
+  library(doParallel)
+  cl <- makePSOCKcluster(cores)
+  registerDoParallel(cl)
+}
+
+source("extras/overlay_roc_curves.R")
+```
+
+
+The R packages used in this chapter are: `r pkg_text(c("tidymodels", "nnet", "discrim", "earth",
+"kknn", "klaR", "kernlab"))`. 
+
+
+
+```{r chapter-13-data}
+library(tidymodels)
+data(grants)
+
+ls(pattern = "grants")
+
+load("RData/grants_split.RData")
+
+grants_split
+nrow(grants_test)
+```
+
+
+
+## Neural Networks
+
+
+```{r chapter-13-nnet, cache = caching}
+norm_nzv_rec <- 
+ recipe(class ~ ., data = grants_other) %>% 
+ step_dummy(all_nominal(), -class) %>% 
+ step_nzv(all_predictors()) %>% 
+ step_normalize(all_predictors())
+
+mlp_spec <- 
+ mlp(hidden_units = tune(), penalty = tune(), epochs = 2000) %>% 
+ # nnet() has a fixed limit on the number of parameters that is fairly
+ # low default. We set it to work with the largest network that we'll 
+ # make. If we go up to 15 hidden units, we will need
+ #   10 * (ncol(grants_other) + 1) + 10 + 1 
+ # parameters (about 22000). 
+ set_engine("nnet", MaxNWts = 22000) %>% 
+ set_mode("classification")
+
+mlp_wflow <- 
+ workflow() %>% 
+ add_model(mlp_spec) %>% 
+ add_recipe(norm_nzv_rec)
+
+mlp_param <- 
+ mlp_wflow %>% 
+ parameters() %>% 
+ update(
+  hidden_units = hidden_units(c(2, 10)),
+  # penalty is in log-10 units:
+  penalty = penalty(c(-10, 1))
+  )
+
+gd_ctrl <- control_grid(save_pred = TRUE, save_workflow = TRUE, 
+                             parallel_over = "everything")
+
+mlp_grid <- crossing(hidden_units = c(2, 4, 6, 8), penalty = 10^c(1, 0, log10(2))) 
+
+set.seed(1301)
+mlp_tune <- 
+ mlp_wflow %>% 
+ tune_grid(resamples = grants_split, grid = mlp_grid, 
+           control = gd_ctrl, param_info = mlp_param)
+```
+
+
+
+## Flexible Discriminant Analysis
+
+
+
+```{r chapter-13-fda, cache = caching}
+library(discrim)
+
+fda_spec <-
+ discrim_flexible(num_terms = tune(), prod_degree = tune(), prune_method = "none") %>% 
+ set_engine("earth")
+
+fda_wflow <- 
+ workflow() %>% 
+ add_model(fda_spec) %>% 
+ add_formula(class ~ .)
+
+fda_grid <- crossing(num_terms = 2:25, prod_degree = 1:2) 
+
+set.seed(1301)
+fda_tune <- 
+ fda_wflow %>% 
+ tune_grid(resamples = grants_split, grid = fda_grid, control = gd_ctrl)
+```
+
+
+
+## Support Vector Machines
+
+
+
+
+```{r chapter-13-svm, cache = caching}
+norm_zv_rec <- 
+ recipe(class ~ ., data = grants_other) %>% 
+ step_dummy(all_nominal(), -class) %>% 
+ step_zv(all_predictors()) %>% 
+ step_normalize(all_predictors())
+
+svm_r_spec <- 
+ svm_rbf(cost = tune(), rbf_sigma = tune()) %>% 
+ set_engine("kernlab") %>% 
+ set_mode("classification")
+
+svm_p_spec <- 
+ svm_poly(cost = tune(), degree = 2, scale_factor = tune()) %>% 
+ set_engine("kernlab") %>% 
+ set_mode("classification")
+
+svm_wflow_set <- 
+ workflow_set(
+  preproc = list(none = norm_zv_rec, nzv = norm_nzv_rec),
+  models =  list(svm_rbf = svm_r_spec, svm_poly = svm_p_spec),
+  cross = TRUE
+ ) %>% 
+ workflow_map(resamples = grants_split, seed = 1301, grid = 25,
+              control = gd_ctrl, verbose = TRUE)
+```
+
+## K-Nearest Neighbors
+
+
+
+
+```{r chapter-13-knn, cache = caching}
+norm_nzv_rec <- 
+ recipe(class ~ ., data = grants_other) %>% 
+ step_dummy(all_nominal(), -class) %>% 
+ step_nzv(all_predictors()) %>% 
+ step_normalize(all_predictors())
+
+knn_spec <- 
+ nearest_neighbor(neighbors = tune(), weight_func = tune(), dist_power = tune()) %>% 
+ set_engine("kknn") %>% 
+ set_mode("classification")
+
+knn_param <- 
+ knn_spec %>% 
+ parameters() %>% 
+ update(
+  neighbors = neighbors(c(1, 50)),
+  dist_power = dist_power(c(0, 2))
+ )
+
+knn_wflow_set <- 
+ workflow_set(
+  preproc = list(none = norm_zv_rec, nzv = norm_nzv_rec),
+  models =  list(knn = knn_spec),
+  cross = TRUE
+ ) %>% 
+ workflow_map(resamples = grants_split, seed = 1301, grid = 25, param_info = knn_param,
+              control = gd_ctrl, verbose = TRUE)
+
+
+```
+
+## Naive Bayes
+
+
+
+```{r chapter-13-nb, cache = caching}
+nb_nzv_rec <- 
+ recipe(class ~ ., data = grants_other) %>% 
+ step_nzv(all_predictors()) %>% 
+ step_bin2factor(starts_with("rfcd"), starts_with("seo"),  
+                 starts_with("sponsor"), -sponsor_code)
+  
+nb_spec <- 
+ naive_Bayes() %>% 
+ set_engine("klaR") 
+
+rs_ctrl <- control_resamples(save_pred = TRUE, save_workflow = TRUE)
+
+nb_wflow <- 
+ workflow() %>% 
+ add_model(nb_spec) %>% 
+ add_recipe(nb_nzv_rec)
+
+set.seed(1301)
+nb_resamp <- 
+ nb_wflow %>% 
+ fit_resamples(resamples = grants_split,  control = rs_ctrl)
+```
+
+```{r chapter-13-teardown, include = FALSE}
+if (grepl("mingw32", R.Version()$platform)) {
+ stopCluster(cl)
+} 
+
+save(mlp_tune, fda_tune, svm_wflow_set, knn_wflow_set, nb_resamp,
+     version = 2, compress = "xz", file = "RData/chapter_13.RData")
+```
+
+

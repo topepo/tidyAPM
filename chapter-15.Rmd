@@ -1,0 +1,82 @@
+# A Summary of Grant Application Models
+
+```{r chapter-15-startup, include = FALSE}
+knitr::opts_chunk$set(fig.path = "figures/")
+library(tidymodels)
+library(tbd)
+
+caching <- TRUE
+
+cores <- parallel::detectCores()
+if (!grepl("mingw32", R.Version()$platform)) {
+ library(doMC)
+ registerDoMC(cores = cores)
+} else {
+  library(doParallel)
+  cl <- makePSOCKcluster(cores)
+  registerDoParallel(cl)
+}
+
+source("extras/overlay_roc_curves.R")
+```
+
+
+The R packages used in this chapter are: `r pkg_text(c("tidymodels", "C50", "rpart", "baguette",
+"xgboost", "ranger"))`. 
+
+
+
+```{r chapter-15-data}
+library(tidymodels)
+data(grants)
+
+ls(pattern = "grants")
+
+load("RData/grants_split.RData")
+
+grants_split
+nrow(grants_test)
+```
+
+
+```{r chapter-15-imports, include = FALSE}
+load("RData/chapter_12.RData")
+load("RData/chapter_13.RData")
+load("RData/chapter_14.RData")
+```
+
+
+```{r chapter-15-new-workflow-set}
+more_workflows <-
+ as_workflow_set(
+  none_C5 = C5_tune,
+  none_cart = cart_tune,
+  none_glmnet = glmnet_tune,
+  none_rf = rf_tune,
+  none_rules = rules_tune,
+  none_xgboost = xgboost_tune,
+  none_cart_bag = cart_bag_tune,
+  none_rules_bag = rules_bag_tune,
+  nzv_mlp = mlp_tune,
+  none_fda = fda_tune,
+  nzv_nb = nb_resamp
+ )
+
+grants_results <- 
+ bind_rows(lda_wflow_set, logistic_wflow_set, pls_wflow_set, 
+           svm_wflow_set, knn_wflow_set, more_workflows)
+```
+
+
+```{r chapter-15-rank-plot}
+autoplot(grants_results, select_best = TRUE, metric = "roc_auc")
+```
+
+```{r chapter-15-rank}
+rank_results(grants_results, select_best = TRUE, rank_metric = "roc_auc") %>% 
+ filter(.metric == "roc_auc")
+```
+
+
+fit a final model
+

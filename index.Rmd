@@ -32,7 +32,7 @@ If you are already aquainted with the tidyverse and are looking for some tidymod
 
 ## What this website is {-}
 
-Each chapter in _APM_ has a computing section that describes in detail how the analyses in that chapter were conducted. This website aims to be an update to those computing sections that show how to conduct the same analses with witdymodels. 
+Each chapter in _APM_ has a computing section that describes in detail how the analyses in that chapter were conducted. This website aims to be an update to those computing sections that show how to conduct the same analyses with tidymodels. 
 
 ## What this website isn't {-}
 
