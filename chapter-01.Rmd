@@ -6,7 +6,150 @@ Additionally, tidymodels is not `r pkg(caret)`. It is more modular and not inten
 
 As a result, this companion is not a 1:1 translation of `r pkg(caret)` code to tidymodels. In some cases, we use a different optimization technique to choose tuning parameter values. In others, a different package might be used to fit a model described in _APM_. Also, there is a suite of models that `r pkg(caret)` supports but tidymodels do not. The `r pkg(RWeka)` packages are not part of the canonical tidymodels system, because of their use of `r pkg(rJava)` (which can be problematic to support on some operating systems).  
 
-There are not an real analyses in this chapter of _APM_ so there is not code to reproduce. Instead, start with a comparison between the old and new software then discuss some practical issues for using this website. 
+There are not any real analyses in this chapter of _APM_ so there is not code to reproduce. Instead, start with a comparison between the old and new software then discuss some practical issues for using this website. 
+
+## A high level tour of tidymodels packages
+
+`r pkg(caret)` contains a lot of disparate tools for model fitting, tuning, resampling, performance assessment, feature selection, and other tasks. The philosophy of the tidyverse is to create smaller, more modular packages that work together. There are substantially benefits to structuring the system this way: ease of support and testing, avoiding scope creep, and so on. The downside is that users can sometimes find it confusion. Some of the packages are not necessarily named in a way that makes their purposes clear (although the names are usually memorable).  
+
+
+The remedy to this is to use the `r pkg(tidymodels)` package. This automatically loads the core group of tidymodels packages and has tools to install and load the non-core packages too. The nice thing about this is that users can memorize _functions_ that are useful instead of the packages that contain the functions that they need. Loading the package gives a nice summary of the core packages: 
+
+```{r chapter-01-tm}
+library(tidymodels)
+```
+
+Note that there are commonly used tidyverse packages in this list too. This package has a _tagging_ system that has lists of tidy packages that specialize in certain types of analyses. The current set of tags are: 
+
+```{r chapter-01-tags}
+tag_show()
+```
+
+See `?tag_show` for other tag-related functions. 
+
+Now let's look at some of the the primary tidymodels packages. 
+
+### The `r pkg(parsnip)` package
+
+This package contains the infrastructure for defining and fitting models. One of the tidymodels philosophies is to separate the planning from the doing. For example, when you fit a model using `lm(formula, data)`, it defines the model to be fit and then fits it. There are some disadvantages to doing this and, in tidymodels, we first define models before fitting them. For example, a simple linear model _specification_ would be: 
+
+```{r chapter-01-lm-spec}
+lm_spec <- linear_reg() %>% set_engine("lm")
+```
+
+The _engine_ is related to how it should be fit. The use of `linear_reg()` defines that there is a numeric output and the structural form of the model is that there are simple linear combinations of model parameters. This would also be true for regularized models, Bayesian models, robust models, and so on. Taking this approach makes it easy to switch between estimation methods (or packages) for the same model type. 
+
+Fitting is done using the `fit()` or `fit_xy()` function. The former takes a formula and the latter is the non-formula interface. For example: 
+
+```{r chapter-01-lm-fit}
+lm_spec %>% fit(mpg ~ ., data = mtcars)
+```
+
+Like `r pkg(caret)`, the underling `lm` object is saved in the `r pkg(parsnip)` model fit object. 
+
+`r pkg(parsnip)` contains a number of model definitions for different types of models. Because it depends on a lot of package, there are a variety of `r pkg(parsnip)`-adjacent package that also contain model definitions for specific types of models. For example `r pkg(rules)` is for rule-based models, `r pkg(discrim)` focuses on discriminant analysis techniques and so on. 
+
+A full list of the models in `r pkg(parsnip)` and its ancillary packages is at [`tidymodels.org/find/parsnip/`](https://www.tidymodels.org/find/parsnip/). 
+
+
+### The `r pkg(recipes)` package
+
+tidymodels fully supports the standard R formula as well as the non-formula interface. There are some limitations imposed by these methods though. After rethinking the standard infrastructure for specifying variables and preprocessing them prior to modeling, the `r pkg(recipes)` package was born. 
+
+A recipe is a step-by-step set of instructions for how to treat the data. There are formula and non-formula interfaces to start the recipe and these are only used to define what data columns are outcomes and which are predictors. For example, engine displacement in the `mtcars` data can be linearized using a simple transformation: 
+
+```{r chapter-01-recipe-disp}
+car_rec <- 
+ recipe(mpg ~ ., data = mtcars) %>% 
+ step_mutate(displ = 1/sqrt(disp))
+```
+
+This is a pretty simple recipe that defines a deterministic transformation of a predictor. The recipe does the following: defines `mpg` as the outcome and the other columns as predictors then specifies how we should encode the `disp` column. Preprocessing steps are sequentially piped into the recipe definition. A single formula could have been defined to to the same operations. However, the power of recipes comes from being able to do more serious data preprocessing. It can also encapsulate all of the predictor data data manipulations into a single object (as oppose to being manually coded across multiple R files). If you are new to recipes, the `tidymodels.org` [_Get Started_](https://www.tidymodels.org/start/) articles show a lot of what can be done. 
+
+Like `r pkg(parsnip)`, there are supplementary packages that contain additional recipe definitions. For example, the `r pkg(embed)` package has steps for sophisticated transformations (e.g. UMAP, entity embeddings, etc) while `r pkg(textrecipes)` contains excellent tools for processing text data (see the [_Supervised Machine Learning for Text Analysis in R_](https://smltar.com/) book for examples with text). 
+
+A list of all recipes steps across packages can be found at [`tidymodels.org/find/recipes/`](https://www.tidymodels.org/find/recipes/). 
+
+### The `r pkg(workflows)` package
+
+In the course of creating models, a variety of models and preprocessing steps might be evaluated before finding the best technique for the data at hand. An R script might have a lot of objects in them that have been combined. A workflow object is a way to bind specific models and preprocessors together so that projects can be better organized. As an example, [_Supervised Machine Learning for Text Analysis in R_](https://smltar.com/mlclassification.html#classfirstmodel) use the following recipe and model to build a classification model on consumer complaint data: 
+
+```{r chapter-01-smltar-ex, eval = FALSE}
+library(textrecipes)
+library(discrim)
+
+complaints_rec <- 
+ recipe(product ~ consumer_complaint_narrative, data = complaints_train) %>%
+ # Convert text strings to tokens
+ step_tokenize(consumer_complaint_narrative) %>%
+ # Remove frequently occurring words
+ step_stopwords(consumer_complaint_narrative) %>%
+ # Filter the tokens
+ step_tokenfilter(consumer_complaint_narrative, max_tokens = 500) %>%
+ # Convert tokens to features
+ step_tfidf(consumer_complaint_narrative)
+
+nb_spec <- 
+ naive_Bayes() %>%
+  set_mode("classification") %>%
+  set_engine("naivebayes")
+```
+
+A workflow can be used to bind these together: 
+
+```{r chapter-01-wflow-bind, eval = FALSE}
+complaint_wf <- 
+ workflow() %>%
+ add_recipe(complaints_rec) %>% 
+ add_model(nb_spec)
+```
+
+Not only are the model and preprocessing actions defined in a single object, fitting the model is streamlined into a single step:
+
+```{r chapter-01-wflow-fit, eval = FALSE}
+complaint_wf %>% fit(data = complaints_train)
+```
+
+As previously mentioned, the process of finding the right model and features can involved a lot of attempts. Instead of creating a lot of objects, workflow set are methods of creating a series or collections of workflows that are processed with very few lines of code. This method, from the `r pkg(tbd)` package, is used throughout this website. 
+
+### The `r pkg(rsample)` package
+
+`r pkg(rsample)` contains tools for resampling. It creates data frames that contain the resampled data (where each row of the data frame is a resample). `r pkg(caret)` embeds the resamples inside of the objects produced by `train()`, `rfe()` and other `r pkg(caret)` functions. `r pkg(rsample)` contains memory efficient objects with the resamples, and tidymodels functions work on these objects. 
+
+For example, this code created 50 resamples of the `mtcars` data that has minimal memory allocation. 
+
+```{r chapter-01-rsample}
+set.seed(101)
+boots <- bootstraps(mtcars, times = 50)
+boots
+
+# The fold increase in memory for 50 resamples of the same size:
+
+library(lobstr)
+as.numeric(lobstr::obj_size(boots)/lobstr::obj_size(mtcars))
+
+# Much smaller than 50
+```
+
+All of the information to reproduce the bootstrap sample, as well as the out-of-bag data, are contained in the `splits` column. There are simple functions to obtain these data frames. 
+
+### The `r pkg(tune)` package
+
+This package uses almost all of the other tidymodels packages. tune contains tools for finding good values of any model tuning parameters (e.g. via grid search or Bayesian optimization). It also has tools for simply resampling models as well as finalizing the models and obtaining test set results. This package is most analogous to  `caret::train()`. It is heavily used in this website. 
+
+An ancillary package, `r pkg(finetune)` has additional grid search and iterative optimization routines for model tuning. 
+
+### A few other package
+
+The following package are important but are used less frequently: 
+
+ * `r pkg(broom)` is one of the original tidy packages for modeling. It can create tidy data frames of numerous quantities produced by modeling objects. For example, using `tidy(lm_object)` creates a highly functional version of the `summary(lm_object)` results where the terms are not encoded as row names and the column names have standardized values. 
+
+ * `r pkg(yardstick)` has functions and tools for performance assessment statistics (e.g., accuracy, RMSE, etc). 
+ 
+ * `r pkg(dials)` contains functions to work with tuning parameters and grids of parameters. As you will see, most modeling function arguments have corresponding dials functions of the same name. For example, `rand_forest()` has an argument called `mtry` and this argument can used in more detail with the `r pkg(dials)` `mtry()` function. 
+ 
+ * The `r pkg(modeldata)` package has a number of data sets used in _APM_ and for teaching purposes. 
 
 ## A high-level comparison of caret and tidymodels packages
 
@@ -86,7 +229,7 @@ The tidymodels group is still working on is better user interfaces. For example,
 knitr::include_graphics("figures/usemodels.png")
 ```
 
-Another interface, and one that is used here, is the idea of a workflow set. A workflow is a combination of data preprocesssing and a model. In some cases, for the same preprocessing, a collection of models is of interest. Rather than creating a large amount of code to do this, a workflow set can produce all of the combinations of preprocessors and workflows.
+Another interface, and one that is used here, is the idea of a workflow set. A workflow is a combination of data preprocessing and a model. In some cases, for the same preprocessing, a collection of models is of interest. Rather than creating a large amount of code to do this, a workflow set can produce all of the combinations of preprocessors and workflows.
 
 ## Things to know about running the code in this book
 

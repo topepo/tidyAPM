@@ -30,7 +30,7 @@ source("extras/overlay_roc_curves.R")
 The R packages used in this chapter are: `r pkg_text(c("tidymodels", "nnet", "discrim", "earth",
 "kknn", "klaR", "kernlab"))`. 
 
-
+The data objects from the previous chapter are also required here: 
 
 ```{r chapter-13-data}
 library(tidymodels)
@@ -49,6 +49,10 @@ nrow(grants_test)
 ## Neural Networks
 
 
+There are a few different neural network engines in tidymodels. We'll show the results for the `r pkg(nnet)` package. In _APM_, the reduced set of predictors, made smaller using the near-zero variance filter, are used. We will do the same here. _APM_ showed results for a single network as well as an ensemble of network models. Unfortunately, model averaging does not exist at this time for neural networks. 
+
+For a fixed number of epochs, the number of hidden units and weight decay are optimized via a manually specified grid. To make the results somewhat congruent with _APM_, the parameter range is adjusted and we pass this parameter object to the grid tuning function.  
+
 ```{r chapter-13-nnet, cache = caching}
 norm_nzv_rec <- 
  recipe(class ~ ., data = grants_other) %>% 
@@ -62,8 +66,8 @@ mlp_spec <-
  # low default. We set it to work with the largest network that we'll 
  # make. If we go up to 15 hidden units, we will need
  #   10 * (ncol(grants_other) + 1) + 10 + 1 
- # parameters (about 22000). 
- set_engine("nnet", MaxNWts = 22000) %>% 
+ # parameters (about 16000). 
+ set_engine("nnet", MaxNWts = 16000) %>% 
  set_mode("classification")
 
 mlp_wflow <- 
@@ -71,32 +75,42 @@ mlp_wflow <-
  add_model(mlp_spec) %>% 
  add_recipe(norm_nzv_rec)
 
-mlp_param <- 
- mlp_wflow %>% 
- parameters() %>% 
- update(
-  hidden_units = hidden_units(c(2, 10)),
-  # penalty is in log-10 units:
-  penalty = penalty(c(-10, 1))
-  )
-
 gd_ctrl <- control_grid(save_pred = TRUE, save_workflow = TRUE, 
                              parallel_over = "everything")
 
-mlp_grid <- crossing(hidden_units = c(2, 4, 6, 8), penalty = 10^c(1, 0, log10(2))) 
+mlp_grid <- crossing(hidden_units = 1:10, penalty = 10^c(1, 0, log10(2))) 
 
 set.seed(1301)
 mlp_tune <- 
  mlp_wflow %>% 
  tune_grid(resamples = grants_split, grid = mlp_grid, 
-           control = gd_ctrl, param_info = mlp_param)
+           control = gd_ctrl)
 ```
 
+The relationship between the tuning parameters and the area under the ROC curve are: 
+
+```{r chapter-13-fig-05-a}
+autoplot(mlp_tune, metric = "roc_auc")
+```
+
+The ROC curve for the holdout set is: 
+
+```{r chapter-13-fig-05-b}
+best_mlp <- select_best(mlp_tune, metric = "roc_auc")
+best_mlp
+
+model_predictions <- 
+ collect_predictions(mlp_tune, parameters = best_mlp) %>% 
+ mutate(model = "neural network") %>% 
+ select(-hidden_units, -penalty)
+
+overlay_roc_curves(model_predictions, highlight = "neural network") 
+```
 
 
 ## Flexible Discriminant Analysis
 
-
+As mentioned in the previous chapter, the `r pkg(discrim)` package contains discriminant analysis model definitions. For FDA, the package is loaded and `discrim_flexible()` is used with the `"earth"` engine. Both first- and second-degree MARS basis functions are evaluated  
 
 ```{r chapter-13-fda, cache = caching}
 library(discrim)
@@ -118,12 +132,78 @@ fda_tune <-
  tune_grid(resamples = grants_split, grid = fda_grid, control = gd_ctrl)
 ```
 
+The results show very similar results between the additive and non-additive models: 
 
+```{r chapter-13-fig-07-a}
+autoplot(fda_tune, metric = "roc_auc")
+```
+
+The more simple additive model has a slight edge. We'll finalize on that model to produce the ROC curve for the holdout: 
+
+```{r chapter-13-fig-07-b}
+best_fda <- select_best(fda_tune, metric = "roc_auc")
+best_fda
+
+model_predictions <- 
+ collect_predictions(fda_tune, parameters = best_fda) %>% 
+ mutate(model = "FDA") %>% 
+ select(-num_terms, -prod_degree) %>% 
+ bind_rows(model_predictions)
+
+overlay_roc_curves(model_predictions, highlight = "FDA") 
+```
+
+To make the profile plots shown in Figure 15.8 of _APM_, we first need a fitted FDA model: 
+
+```{r chapter-15-fit-fda}
+fda_final_fit <- 
+ fda_wflow %>% 
+ finalize_workflow(best_fda) %>% 
+ fit(grants_other)
+```
+
+We can use a recipe to make the data for the profiling plot. `step_profile()` can take a set of variables and set them to their average value (or first factor level) then make a grid of a single predictor. This function takes the name of the predictor to be profiled, generated the profile data set, then the corresponding predictions. For numeric predictors, we can stack these data together and make a visualization: 
+
+```{r chapter-15-fig-08}
+profile_var <- function(var_nm) {
+ profiled_data <- 
+  recipe(class ~ ., data = grants_other) %>% 
+  # For all columns that are _not_ the profiling variable, 
+  # keep them at their middle point then profile the 
+  # variable of interest. The {{}} splice the variable 
+  # into the expression. 
+  step_profile(-{{var_nm}}, profile = vars({{var_nm}})) %>% 
+  prep() %>% 
+  bake(new_data = NULL)
+ 
+ predict(fda_final_fit, profiled_data, type = "prob") %>% 
+  bind_cols(profiled_data) %>% 
+  # Standardize the output across profiled variables: 
+  dplyr::rename(value = {{var_nm}}) %>% 
+  mutate(term = var_nm) %>% 
+  dplyr::select(term, value, .pred_successful)
+}
+
+fda_plot_data <- 
+ c("day", "all_pub", "num_ci", "success_ci", "unsuccess_ci") %>% 
+ map_dfr(profile_var)
+
+fda_plot_data %>% 
+ ggplot(aes(x = value, y = .pred_successful)) + 
+ geom_line() + 
+ facet_wrap(~ term, scale = "free_x") + 
+ labs(x = NULL, y = "Probability of Success")
+```
+
+There are other packages and functions that can do similar plots. 
 
 ## Support Vector Machines
 
+There are two `r pkg(parsnip)` model specifications for support vector machines, differentiated by their kernel function (`svm_rbf()` and `svm_poly()`).  
 
+Both contain a common tuning parameter (`cost`) and different kernel parameters. For this analysis, we'll create a workflow set and use the default space-filling design to determine a good set of candidate parameter values for each model.  
 
+These models are crossed with both filtering strategies:
 
 ```{r chapter-13-svm, cache = caching}
 norm_zv_rec <- 
@@ -151,6 +231,75 @@ svm_wflow_set <-
  workflow_map(resamples = grants_split, seed = 1301, grid = 25,
               control = gd_ctrl, verbose = TRUE)
 ```
+
+The overall visualization of the results are:
+
+```{r chapter-13-svm-plot}
+autoplot(svm_wflow_set, metric = "roc_auc")
+```
+
+The tuning parameter patterns for the RBF model are:
+
+```{r chapter-13-fig-12}
+svm_results <- 
+ svm_wflow_set %>% 
+ mutate(
+  metrics = map(result, collect_metrics),
+  best = map(result, select_best, metric = "roc_auc"),
+  predictions = map2(result, best, ~ collect_predictions(.x, parameters = .y))
+  )
+
+svm_results %>% 
+ select(wflow_id, metrics) %>% 
+ unnest(cols = c(metrics)) %>% 
+ filter(grepl("rbf", wflow_id) & .metric == "roc_auc") %>% 
+ select(wflow_id, cost, rbf_sigma, mean) %>% 
+ pivot_longer(
+  cols = c(cost, rbf_sigma),
+  names_to = "parameter",
+  values_to = "value"
+ ) %>% 
+ ggplot(aes(x = value, y = mean, col = wflow_id)) + 
+ geom_point() + 
+ facet_wrap(~ parameter, scales = "free_x") + 
+ scale_x_log10() + 
+ labs(x = NULL, y = "roc_auc")
+```
+and for the polynomial kernel: 
+
+```{r chapter-13-fig-13-a}
+svm_results %>% 
+ filter(grepl("poly", wflow_id)) %>% 
+ select(wflow_id, metrics) %>% 
+ unnest(cols = c(metrics)) %>% 
+ filter(.metric == "roc_auc") %>% 
+ select(wflow_id, cost, scale_factor, mean) %>% 
+ pivot_longer(
+  cols = c(cost, scale_factor),
+  names_to = "parameter",
+  values_to = "value"
+ ) %>% 
+ ggplot(aes(x = value, y = mean, col = wflow_id)) + 
+ geom_point() + 
+ facet_wrap(~ parameter, scales = "free_x") + 
+ scale_x_log10() + 
+ labs(x = NULL, y = "roc_auc")
+```
+
+In the grand scheme of the other models, performance here was middling. 
+
+```{r chapter-13-fig-13-b}
+model_predictions <- 
+ svm_results %>% 
+ select(wflow_id, predictions) %>% 
+ unnest(cols = c(predictions)) %>%
+ rename(model = wflow_id) %>% 
+ select(all_of(names(model_predictions))) %>% 
+ bind_rows(model_predictions)
+
+overlay_roc_curves(model_predictions, highlight = "nzv_svm_rbf") 
+```
+
 
 ## K-Nearest Neighbors
 
