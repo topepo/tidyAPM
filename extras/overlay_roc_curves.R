@@ -2,11 +2,11 @@ overlay_roc_curves <- function(x, highlight, alpha = 0.15) {
  require(ggplot2)
  curves <- 
   x %>% 
-  dplyr::group_by(model) %>% 
+  dplyr::group_by(wflow_id, .config) %>% 
   yardstick::roc_curve(class, .pred_successful) %>% 
   dplyr::ungroup()
  
- models <- unique(x$model)
+ models <- unique(x$wflow_id)
  others <- models[models != models]
  curve_cols <- purrr::map_chr(models, ~ rgb(0, 0, 0, alpha))
  names(curve_cols) <- models
@@ -14,7 +14,7 @@ overlay_roc_curves <- function(x, highlight, alpha = 0.15) {
  
  p <- 
   curves %>% 
-  ggplot(aes(x = 1 - specificity, y = sensitivity, col = model)) + 
+  ggplot(aes(x = 1 - specificity, y = sensitivity, col = wflow_id)) + 
   geom_abline(col = "red", lty = 2, alpha = .3) +
   geom_step(direction = "vh", show.legend = FALSE) +
   tune::coord_obs_pred() + 

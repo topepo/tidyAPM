@@ -47,6 +47,17 @@ nrow(grants_test)
 
 ##  Basic Classification Trees
 
+use cart to show how to get dummy variables or not with trees
+
+```{r chapter-14-tree-preproc}
+library(tbd)
+tree_ind_rec <- 
+ recipe(class ~ ., data = grants_other) %>% 
+ step_dummy(all_nominal(), -class, one_hot = TRUE) %>% 
+ step_zv(all_predictors())
+
+tree_vars <- selectors(outcomes = class, predictors = everything())
+```
 
 ```{r chapter-14-cart, cache = caching}
 cart_spec <-
@@ -60,20 +71,54 @@ cart_grid <-
           min_n = (1:10) * 2
         )
 
-cart_wflow <- 
- workflow() %>% 
- add_model(cart_spec) %>% 
- add_variables(outcomes = class, predictors = everything())
-
 gd_ctrl <- control_grid(save_pred = TRUE, save_workflow = TRUE, 
                              parallel_over = "everything")
 
-set.seed(1401)
-cart_tune <- 
- cart_wflow %>% 
- tune_grid(resamples = grants_split, grid = cart_grid,
-              control = gd_ctrl)
+cart_wflow_set <- 
+ workflow_set(
+  preproc = list(none = tree_vars, indicators = tree_ind_rec),
+  models =  list(cart = cart_spec),
+  cross = TRUE
+ ) %>% 
+ workflow_map(resamples = grants_split, seed = 1301, grid = cart_grid,
+              control = gd_ctrl, verbose = TRUE)
 ```
+
+```{r chapter-14-cart-plot}
+autoplot(cart_wflow_set, metric = "roc_auc") + facet_wrap(~ wflow_id)
+```
+
+
+
+```{r chapter-14-cart-results}
+cart_wflow_set %>% 
+  mutate(metrics = map(result, collect_metrics)) %>% 
+  select(wflow_id, preproc, metrics) %>% 
+  unnest(cols = metrics)  %>% 
+  filter(.metric == "roc_auc") %>% 
+  mutate(`cost_complexity (log-10)` = log10(cost_complexity)) %>% 
+  select(`cost_complexity (log-10)`, min_n, mean, preproc, wflow_id) %>% 
+  pivot_longer(
+    cols = c(`cost_complexity (log-10)`, min_n),
+    values_to = "value",
+    names_to = "parameter"
+  ) %>%
+  ggplot(aes(x = value, y = mean, col = preproc)) + 
+  geom_point(alpha = .3) + 
+  facet_wrap(~ parameter, scales = "free_x")
+```
+
+
+
+
+```{r chapter-14-fig-05}
+model_predictions <- 
+  cart_wflow_set %>% 
+  collect_predictions(select_best = TRUE, metric = "roc_auc")  
+
+overlay_roc_curves(model_predictions, highlight = "indicators_cart") 
+```
+
 
 ## Rule-Based Models
 
@@ -99,13 +144,28 @@ rules_tune <-
               control = gd_ctrl)
 ```
 
+
+```{r chapter-14-rule-plot}
+autoplot(rules_tune, metric = "roc_auc")
+```
+
+```{r chapter-14-rules-roc}
+model_predictions <- 
+  as_workflow_set(none_rules = rules_tune) %>% 
+  collect_predictions(select_best = TRUE, metric = "roc_auc") %>% 
+  bind_rows(model_predictions)
+
+overlay_roc_curves(model_predictions, highlight = "none_rules") 
+```
+
+
 ## Bagged Trees
 
 ```{r chapter-14-bagging-cart, cache = caching}
 cart_bag_spec <-
  bag_tree() %>% 
  set_mode("classification") %>% 
- set_engine("rpart")
+ set_engine("rpart", times = 50)
 
 cart_bag_wflow <- 
  workflow() %>% 
@@ -115,30 +175,21 @@ cart_bag_wflow <-
 rs_ctrl <- control_resamples(save_pred = TRUE, save_workflow = TRUE)
 
 set.seed(1401)
-cart_bag_tune <- 
+cart_bag_resamp <- 
  cart_bag_wflow %>% 
  fit_resamples(resamples = grants_split,  control = rs_ctrl)
 ```
 
 
-```{r chapter-14-bagging-rules, cache = caching}
-rules_bag_spec <-
- bag_tree() %>% 
- set_mode("classification") %>% 
- set_engine("rpart")
+```{r chapter-14-fig-07}
+model_predictions <- 
+  as_workflow_set(none_cart_bag = cart_bag_resamp) %>% 
+  collect_predictions(select_best = TRUE, metric = "roc_auc") %>% 
+  bind_rows(model_predictions)
 
-rules_bag_wflow <- 
- workflow() %>% 
- add_model(rules_bag_spec) %>% 
- add_variables(outcomes = class, predictors = everything())
-
-rs_ctrl <- control_resamples(save_pred = TRUE, save_workflow = TRUE)
-
-set.seed(1401)
-rules_bag_tune <- 
- rules_bag_wflow %>% 
- fit_resamples(resamples = grants_split,  control = rs_ctrl)
+overlay_roc_curves(model_predictions, highlight = "none_cart_bag") 
 ```
+
 
 ## Random Forests
 
@@ -161,6 +212,19 @@ rf_tune <-
 ```
 
 
+```{r chapter-14-rf-plot}
+autoplot(rf_tune, metric = "roc_auc")
+```
+
+```{r chapter-14-fig-08}
+model_predictions <- 
+  as_workflow_set(none_rf = rf_tune) %>% 
+  collect_predictions(select_best = TRUE, metric = "roc_auc") %>% 
+  bind_rows(model_predictions)
+
+overlay_roc_curves(model_predictions, highlight = "none_rf") 
+```
+
 
 ## Boosting
 
@@ -172,21 +236,32 @@ xgboost_spec <-
  set_mode("classification") %>% 
  set_engine("xgboost")
 
-xgb_rec <- 
- recipe(class ~ ., data = grants_other) %>% 
- step_dummy(all_nominal(), -class) %>% 
- step_zv(all_predictors())
-
 xgboost_wflow <- 
  workflow() %>% 
  add_model(xgboost_spec) %>% 
- add_recipe(xgb_rec)
+ add_recipe(tree_ind_rec)
 
 set.seed(1401)
 xgboost_tune <- 
  xgboost_wflow %>% 
  tune_grid(resamples = grants_split, grid = 25, control = gd_ctrl)
 ```
+
+one point at 0.50
+
+```{r chapter-14-xgb-plot, warning = FALSE}
+autoplot(xgboost_tune, metric = "roc_auc") + ylim(c(.85, .95))
+```
+
+```{r chapter-14-fig-09}
+model_predictions <- 
+  as_workflow_set(none_xgboost = xgboost_tune) %>% 
+  collect_predictions(select_best = TRUE, metric = "roc_auc") %>% 
+  bind_rows(model_predictions)
+
+overlay_roc_curves(model_predictions, highlight = "none_xgboost") 
+```
+
 
 
 ## C5.0
@@ -211,12 +286,26 @@ C5_tune <-
 ```
 
 
+```{r chapter-14-fig-13-a}
+autoplot(C5_tune, metric = "roc_auc")
+```
+
+```{r chapter-14-fig-13-b}
+model_predictions <- 
+  as_workflow_set(none_C5 = C5_tune) %>% 
+  collect_predictions(select_best = TRUE, metric = "roc_auc") %>% 
+  bind_rows(model_predictions)
+
+overlay_roc_curves(model_predictions, highlight = "none_C5") 
+```
+
 
 ```{r chapter-14-teardown, include = FALSE}
 if (grepl("mingw32", R.Version()$platform)) {
  stopCluster(cl)
 } 
 
-save(C5_tune, cart_bag_tune, cart_tune, rf_tune, rules_bag_tune, rules_tune, xgboost_tune,
+save(C5_tune, cart_wflow_set, cart_wflow_set, rf_tune, rules_tune, 
+     xgboost_tune, cart_bag_resamp,
      version = 2, compress = "xz", file = "RData/chapter_14.RData")
 ```

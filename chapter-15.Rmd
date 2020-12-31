@@ -21,13 +21,15 @@ source("extras/overlay_roc_curves.R")
 ```
 
 
-The R packages used in this chapter are: `r pkg_text(c("tidymodels", "C50", "rpart", "baguette",
-"xgboost", "ranger"))`. 
+The R packages used in this chapter are: `r pkg_text(c("tidymodels", "C50", "discrim", "earth",
+"tbd", "probably"))`. 
 
 
 
 ```{r chapter-15-data}
 library(tidymodels)
+library(tbd)
+
 data(grants)
 
 ls(pattern = "grants")
@@ -50,33 +52,102 @@ load("RData/chapter_14.RData")
 more_workflows <-
  as_workflow_set(
   none_C5 = C5_tune,
-  none_cart = cart_tune,
   none_glmnet = glmnet_tune,
   none_rf = rf_tune,
   none_rules = rules_tune,
   none_xgboost = xgboost_tune,
-  none_cart_bag = cart_bag_tune,
-  none_rules_bag = rules_bag_tune,
+  none_cart_bag = cart_bag_resamp,
   nzv_mlp = mlp_tune,
   none_fda = fda_tune,
   nzv_nb = nb_resamp
  )
 
 grants_results <- 
- bind_rows(lda_wflow_set, logistic_wflow_set, pls_wflow_set, 
-           svm_wflow_set, knn_wflow_set, more_workflows)
+ bind_rows(lda_wflow_set, logistic_wflow_set, pls_wflow_set,
+           cart_wflow_set, svm_wflow_set, knn_wflow_set, 
+           more_workflows)
 ```
 
 
 ```{r chapter-15-rank-plot}
-autoplot(grants_results, select_best = TRUE, metric = "roc_auc")
+autoplot(grants_results, select_best = TRUE, metric = "roc_auc") +
+  theme(legend.position = "right")
 ```
 
 ```{r chapter-15-rank}
 rank_results(grants_results, select_best = TRUE, rank_metric = "roc_auc") %>% 
- filter(.metric == "roc_auc")
+ filter(.metric == "roc_auc") %>% 
+  select(wflow_id, model, `ROC AUC` = mean, rank)
 ```
 
 
-fit a final model
+fit final models
 
+```{r chapter-15-fda, cache = caching}
+library(discrim)
+fda_tune_res <- grants_results %>% pull_workflow_result("none_fda")
+fda_final_fit <- 
+  grants_results %>% 
+  pull_workflow("none_fda") %>% 
+  finalize_workflow(select_best(fda_tune_res, metric = "roc_auc")) %>% 
+  fit(grants_other)
+
+fda_test_pred <- 
+  predict(fda_final_fit, grants_test, type = "prob") %>% 
+  bind_cols(predict(fda_final_fit, grants_test)) %>% 
+  bind_cols(grants_test %>% select(class))
+roc_auc(fda_test_pred, class, .pred_successful)
+```
+
+
+```{r chapter-15-c5, cache = caching}
+C5_tune_res <- grants_results %>% pull_workflow_result("none_C5")
+C5_final_fit <- 
+  grants_results %>% 
+  pull_workflow("none_C5") %>% 
+  finalize_workflow(select_best(C5_tune_res, metric = "roc_auc")) %>% 
+  fit(grants_other)
+
+C5_test_pred <- 
+  predict(C5_final_fit, grants_test, type = "prob") %>% 
+  bind_cols(predict(C5_final_fit, grants_test)) %>% 
+  bind_cols(grants_test %>% select(class))
+roc_auc(C5_test_pred, class, .pred_successful)
+```
+
+```{r chapter-15-test-roc, cache = caching}
+C5_test_pred %>% 
+  mutate(model = "C5.0") %>% 
+  bind_rows(
+    fda_test_pred %>% 
+      mutate(model = "FDA")
+  ) %>% 
+  group_by(model) %>% 
+  roc_curve(class, .pred_successful) %>% 
+  autoplot()
+```
+
+
+```{r chapter-15-c5-threshold}
+library(probably)
+C5_cutpoint_stats <- 
+  C5_test_pred %>% 
+  threshold_perf(class, .pred_successful,
+                 thresholds = seq(0.25, 1, by = 0.01))
+C5_cutpoint_stats
+
+C5_cutpoint_stats %>% 
+  filter(.metric %in% c("sens", "spec")) %>% 
+  ggplot(aes(x = .threshold, y = .estimate, col = .metric)) + 
+  geom_line() + 
+  labs(x = "Probability Threshold", y = NULL)
+```
+
+
+```{r chapter-15-c5-distance}
+C5_cutpoint_stats %>% 
+  filter(.metric %in% c("distance")) %>% 
+  ggplot(aes(x = .threshold, y = .estimate)) + 
+  geom_line() + 
+  labs(x = "Probability Threshold", y = "Distance to Ideal")
+```

@@ -30,6 +30,8 @@ The R packages used in this chapter are: `r pkg_text(c("tidymodels", "MASS", "di
 "mixOmics", "plsmod"))`. 
 
 
+mention mix of workflow sets and workflows
+
 ## Case Study: Predicting Successful Grant Applications
 
 These data are supplied in the GitHub repository. The object `grants_testing` holds the test set while `grants_other` contains the data used for modeling and initial evaluation. 
@@ -83,18 +85,22 @@ logistic_wflow_set <-
  ) %>% 
  workflow_map(fn = "fit_resamples", resamples = grants_split, seed = 1201,
               control = rs_ctrl)
- 
-model_predictions <- 
- map(logistic_wflow_set$result, collect_predictions) %>% 
- map2_dfr(logistic_wflow_set$wflow_id, ~ mutate(.x, model = .y))
-
-map(logistic_wflow_set$result, collect_metrics) 
 ```
-The results show that using all of the predictors in the model has a significant negative effect on the model. Note that there are no standard errors associated with the results. This is a consqeuence of the validation set being a single resample. 
+
+
+```{r chapter-12-glm-res}
+collect_metrics(logistic_wflow_set) %>% 
+  select(wflow_id, .metric, mean, n, std_err) %>% 
+  arrange(.metric)
+```
+
+The results show that using all of the predictors in the model has a significant negative effect on the model. Note that there are no standard errors associated with the results. This is a consequence of the validation set being a single resample. 
 
 A function called `overlay_roc_curves()` can be used to emulate the ROC curve figures shown in _APM_. The implementation is not complex and the code is found in the [`extras`](https://github.com/topepo/tidyAPM/blob/main/extras/overlay_roc_curves.R) directory. The inputs are a data frame of holdout predictors and a character string for the workflow ID that should be highlighted. All other curves are shown in a transparent grey color.  
 
 ```{r chapter-12-fig-04}
+model_predictions <- collect_predictions(logistic_wflow_set) 
+
 overlay_roc_curves(model_predictions, highlight = "nzv_logistic") 
 ```
 
@@ -118,23 +124,24 @@ lda_wflow_set <-
  workflow_map(fn = "fit_resamples", resamples = grants_split, seed = 1201,
               control = rs_ctrl)
  
-model_predictions <- 
- map(lda_wflow_set$result, collect_predictions) %>% 
- map2_dfr(lda_wflow_set$wflow_id, ~ mutate(.x, model = .y)) %>% 
- bind_rows(model_predictions)
-
-map(lda_wflow_set$result, collect_metrics) 
+collect_metrics(lda_wflow_set) %>% 
+  select(wflow_id, .metric, mean, n, std_err) %>% 
+  arrange(.metric)
 ```
 
 We then highlight the better of the two LDA models. Again, the near-zero variance filter has a positive effect on the results.  
 
 ```{r chapter-12-fig-09}
+model_predictions <- 
+ collect_predictions(lda_wflow_set)  %>% 
+ bind_rows(model_predictions)
+
 overlay_roc_curves(model_predictions, highlight = "nzv_LDA") 
 ```
 
 ## Partial Least Squares Discriminant Analysis
 
-Similarly, the plsmod package contains the model definitions for the PLS discriminant analysis. Here, the number of PLS components is tuned. 
+Similarly, the `r pkg(plsmod)` package contains the model definitions for the PLS discriminant analysis. Here, the number of PLS components is tuned. 
 
 ```{r chapter-12-pls, cache = caching}
 library(plsmod)
@@ -161,10 +168,12 @@ pls_wflow_set <-
 To overlay the effect of the two filters, we extra the metrics, stack them, then a basic `r pkg(ggplot2)` plot is created: 
 
 ```{r chapter-12-fig-12}
-map(pls_wflow_set$result, collect_metrics) %>% 
- map2_dfr(pls_wflow_set$wflow_id, ~ mutate(.x, model = .y)) %>% 
+pls_wflow_set %>% 
+ mutate(metrics = map(result, collect_metrics)) %>% 
+ select(wflow_id, metrics) %>% 
+ unnest(cols = metrics) %>% 
  filter(.metric == "roc_auc") %>% 
- ggplot(aes(x = num_comp, y = mean, col = model)) + 
+ ggplot(aes(x = num_comp, y = mean, col = wflow_id)) + 
  geom_point() + 
  geom_line() + 
  labs(x = "Number of PLS Components", y = "roc_auc")
@@ -173,12 +182,8 @@ map(pls_wflow_set$result, collect_metrics) %>%
 The better variant of the model is once again the more heavily filtered recipe: 
 
 ```{r chapter-12-fig-13}
-
 model_predictions <- 
- map(pls_wflow_set$result, collect_predictions) %>% 
- map2_dfr(pls_wflow_set$wflow_id, ~ mutate(.x, model = .y)) %>% 
- filter(num_comp == 4) %>% 
- select(-num_comp) %>% 
+ collect_predictions(pls_wflow_set, select_best = TRUE, metric = "roc_auc")  %>% 
  bind_rows(model_predictions)
 
 overlay_roc_curves(model_predictions, highlight = "nzv_PLS") 
@@ -211,14 +216,6 @@ glmnet_tune <-
  glmnet_wflow %>% 
  tune_grid(resamples = grants_split, grid = glmn_grid,
               control = gd_ctrl)
- 
-glmnet_best <- select_best(glmnet_tune, metric = "roc_auc")
-
-model_predictions <- 
- collect_predictions(glmnet_tune, parameters = glmnet_best) %>% 
- mutate(model = "glmnet") %>% 
- select(-penalty, -mixture) %>% 
- bind_rows(model_predictions)
 ```
 
 The results show that there are multiple penalties that have about the same performance (for different mixtures of penalty types). For a few settings, the amount of penalization removes all of the predictors thereby producing an area under the curve of 0.50.  
@@ -230,7 +227,12 @@ autoplot(glmnet_tune, metric = "roc_auc")
 For some probability threshold, this model has the best results so far. 
 
 ```{r chapter-12-fig-16b}
-overlay_roc_curves(model_predictions, highlight = "glmnet") 
+model_predictions <- 
+  as_workflow_set(none_glmnet = glmnet_tune) %>% 
+  collect_predictions(select_best = TRUE, metric = "roc_auc") %>% 
+  bind_rows(model_predictions)
+
+overlay_roc_curves(model_predictions, highlight = "none_glmnet") 
 ```
 
 ## Nearest Shrunken Centroids
