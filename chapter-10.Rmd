@@ -191,24 +191,9 @@ all_workflows <-
 set.seed(1002)
 workflow_fits <- 
  all_workflows %>% 
- filter(!(model %in% c("svm_poly", "mlp"))) %>% 
+ filter(!(model %in% c("mlp"))) %>% 
  workflow_map(fn = "tune_race_anova", seed = 1003, 
               resamples = concrete_folds, grid = 50, control = race_ctrl)
-
-# ------------------------------------------------------------------------------
-
-svm_p_param <- 
- svm_p_spec %>% 
- parameters() %>% 
- update(degree = prod_degree())
-
-set.seed(1002)
-svm_p_fit <- 
- all_workflows %>% 
- filter(model == "svm_poly") %>% 
- workflow_map(fn = "tune_race_anova", seed = 1003, 
-              resamples = concrete_folds, grid = 50, control = race_ctrl, 
-              param_info = svm_p_param)
 
 # ------------------------------------------------------------------------------
 
@@ -229,7 +214,7 @@ nnet_fit <-
 
 workflow_fits <- 
  workflow_fits %>% 
- bind_rows(svm_p_fit, nnet_fit)
+ bind_rows(nnet_fit)
 ```
 
 To get a quick assessment of the results, the `autoplot()` function can be used: 

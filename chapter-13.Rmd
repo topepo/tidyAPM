@@ -96,15 +96,11 @@ autoplot(mlp_tune, metric = "roc_auc")
 The ROC curve for the holdout set is: 
 
 ```{r chapter-13-fig-05-b}
-best_mlp <- select_best(mlp_tune, metric = "roc_auc")
-best_mlp
-
 model_predictions <- 
- collect_predictions(mlp_tune, parameters = best_mlp) %>% 
- mutate(model = "neural network") %>% 
- select(-hidden_units, -penalty)
+  as_workflow_set(nzv_mlp = mlp_tune) %>% 
+  collect_predictions(select_best = TRUE, metric = "roc_auc") 
 
-overlay_roc_curves(model_predictions, highlight = "neural network") 
+overlay_roc_curves(model_predictions, highlight = "nzv_mlp") 
 ```
 
 
@@ -141,21 +137,20 @@ autoplot(fda_tune, metric = "roc_auc")
 The more simple additive model has a slight edge. We'll finalize on that model to produce the ROC curve for the holdout: 
 
 ```{r chapter-13-fig-07-b}
-best_fda <- select_best(fda_tune, metric = "roc_auc")
-best_fda
-
 model_predictions <- 
- collect_predictions(fda_tune, parameters = best_fda) %>% 
- mutate(model = "FDA") %>% 
- select(-num_terms, -prod_degree) %>% 
- bind_rows(model_predictions)
+  as_workflow_set(none_fda = fda_tune) %>% 
+  collect_predictions(select_best = TRUE, metric = "roc_auc")  %>% 
+  bind_rows(model_predictions)
 
-overlay_roc_curves(model_predictions, highlight = "FDA") 
+overlay_roc_curves(model_predictions, highlight = "none_fda") 
 ```
 
 To make the profile plots shown in Figure 15.8 of _APM_, we first need a fitted FDA model: 
 
-```{r chapter-15-fit-fda}
+```{r chapter-13-fit-fda}
+best_fda <- select_best(fda_tune, metric = "roc_auc")
+best_fda
+
 fda_final_fit <- 
  fda_wflow %>% 
  finalize_workflow(best_fda) %>% 
@@ -164,7 +159,7 @@ fda_final_fit <-
 
 We can use a recipe to make the data for the profiling plot. `step_profile()` can take a set of variables and set them to their average value (or first factor level) then make a grid of a single predictor. This function takes the name of the predictor to be profiled, generated the profile data set, then the corresponding predictions. For numeric predictors, we can stack these data together and make a visualization: 
 
-```{r chapter-15-fig-08}
+```{r chapter-13-fig-08}
 profile_var <- function(var_nm) {
  profiled_data <- 
   recipe(class ~ ., data = grants_other) %>% 
@@ -218,7 +213,7 @@ svm_r_spec <-
  set_mode("classification")
 
 svm_p_spec <- 
- svm_poly(cost = tune(), degree = 2, scale_factor = tune()) %>% 
+ svm_poly(cost = tune(), degree = tune(), scale_factor = tune()) %>% 
  set_engine("kernlab") %>% 
  set_mode("classification")
 
@@ -290,12 +285,15 @@ In the grand scheme of the other models, performance here was middling.
 
 ```{r chapter-13-fig-13-b}
 model_predictions <- 
- svm_results %>% 
- select(wflow_id, predictions) %>% 
- unnest(cols = c(predictions)) %>%
- rename(model = wflow_id) %>% 
- select(all_of(names(model_predictions))) %>% 
- bind_rows(model_predictions)
+  svm_wflow_set %>% 
+  filter(grepl("poly", wflow_id)) %>% 
+  collect_predictions(select_best = TRUE, metric = "roc_auc") %>% 
+  bind_rows(
+    svm_wflow_set %>% 
+      filter(grepl("rbf", wflow_id)) %>% 
+      collect_predictions(select_best = TRUE, metric = "roc_auc") 
+  ) %>% 
+  bind_rows(model_predictions)
 
 overlay_roc_curves(model_predictions, highlight = "nzv_svm_rbf") 
 ```
@@ -334,8 +332,31 @@ knn_wflow_set <-
  ) %>% 
  workflow_map(resamples = grants_split, seed = 1301, grid = 25, param_info = knn_param,
               control = gd_ctrl, verbose = TRUE)
+```
 
+```{r chapter-13-fig-14-a}
+knn_wflow_set %>% 
+  mutate(metrics = map(result, collect_metrics)) %>% 
+  select(wflow_id, metrics) %>% 
+  unnest(cols = metrics) %>% 
+  select(wflow_id, neighbors, weight_func, dist_power, mean) %>% 
+  pivot_longer(
+    cols = c(neighbors, dist_power),
+    names_to = "parameter",
+    values_to = "value"
+  ) %>% 
+  ggplot(aes(x = value, y = mean, col = weight_func)) + 
+  geom_point() + 
+  facet_grid(wflow_id ~ parameter, scales = "free_x") + 
+  labs(x = NULL, y = "roc_auc")
+```
 
+```{r chapter-13-fig-14-b}
+model_predictions <- 
+  collect_predictions(knn_wflow_set, select_best = TRUE, metric = "roc_auc") %>% 
+  bind_rows(model_predictions)
+
+overlay_roc_curves(model_predictions, highlight = "nzv_knn") 
 ```
 
 ## Naive Bayes
@@ -364,7 +385,20 @@ set.seed(1301)
 nb_resamp <- 
  nb_wflow %>% 
  fit_resamples(resamples = grants_split,  control = rs_ctrl)
+
+collect_metrics(nb_resamp)
 ```
+
+
+```{r chapter-13-nb-roc}
+model_predictions <- 
+  as_workflow_set(nzv_nb = nb_resamp) %>% 
+  collect_predictions() %>% 
+  bind_rows(model_predictions)
+
+overlay_roc_curves(model_predictions, highlight = "nzv_nb") 
+```
+
 
 ```{r chapter-13-teardown, include = FALSE}
 if (grepl("mingw32", R.Version()$platform)) {
