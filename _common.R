@@ -41,14 +41,31 @@ tidyAPM_version <- function() {
 pkg <- function(x) {
   cl <- match.call()
   x <- as.character(cl$x)
-  paste0('<span class="pkg">', x, '</span>')
+  pkg_link(x)
+}
+pkg_link <- function(x) {
+  if (x %in% c("mixOmics")) {
+    res <- bioc_link(x)
+  } else {
+    res <- cran_link(x)
+  }
+  res
 }
 pkg_text <- function(x) {
   x <- sort(x)
-  x <- purrr::map_chr(x, ~ paste0('<span class="pkg">', .x, '</span>'))
+  x <- purrr::map_chr(x, pkg_link)
   knitr::combine_words(x)
 }
-
+cran_link <- function(x) {
+  paste0(
+    '<span class="pkg"><a href="https://cran.r-project.org/package=', x, 
+    '" target="_blank">', x, '</a></span>')
+}
+bioc_link <- function(x) {
+  paste0(
+    '<span class="pkg"><a href="https://www.bioconductor.org/packages/release/bioc/html/', x, 
+    '.html" target="_blank">', x, '</a></span>')
+}
 
 is_new_version <- function(x, path) {
   cl <- match.call()
