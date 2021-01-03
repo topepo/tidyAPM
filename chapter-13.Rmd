@@ -264,21 +264,22 @@ and for the polynomial kernel:
 
 ```{r chapter-13-fig-13-a}
 svm_results %>% 
- filter(grepl("poly", wflow_id)) %>% 
- select(wflow_id, metrics) %>% 
- unnest(cols = c(metrics)) %>% 
- filter(.metric == "roc_auc") %>% 
- select(wflow_id, cost, scale_factor, mean) %>% 
- pivot_longer(
-  cols = c(cost, scale_factor),
-  names_to = "parameter",
-  values_to = "value"
- ) %>% 
- ggplot(aes(x = value, y = mean, col = wflow_id)) + 
- geom_point() + 
- facet_wrap(~ parameter, scales = "free_x") + 
- scale_x_log10() + 
- labs(x = NULL, y = "roc_auc")
+  filter(grepl("poly", wflow_id)) %>% 
+  select(wflow_id, metrics) %>% 
+  unnest(cols = c(metrics)) %>% 
+  filter(.metric == "roc_auc") %>% 
+  select(wflow_id, cost, scale_factor, degree, mean) %>% 
+  mutate(degree = format(degree)) %>% 
+  pivot_longer(
+    cols = c(cost, scale_factor),
+    names_to = "parameter",
+    values_to = "value"
+  ) %>% 
+  ggplot(aes(x = value, y = mean, col = wflow_id, pch = degree)) + 
+  geom_point() + 
+  facet_wrap(~ parameter, scales = "free_x") + 
+  scale_x_log10() + 
+  labs(x = NULL, y = "roc_auc")
 ```
 
 In the grand scheme of the other models, performance here was middling. 
