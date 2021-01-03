@@ -6,6 +6,8 @@ The goal of these files is to approximate the analyses in the book with the more
 
 Some caveats:
 
+ * **This** is a rough draft. It relies on a few devel versions and one experiemtnal package tyhat has not been made public yet (it is named `tbd`). 
+
  * R uses a different random number generator than it did <= 2013, so results won't be exactly the same. 
 
  * The packages used are much older than they were when _APM_ was written. For example, there have been over 30 releases of `caret` since the book was compiled. There will be differences in results for this reason. 
