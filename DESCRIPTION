@@ -35,6 +35,7 @@ Imports:
   kernlab,
   kknn,
   knitr,
+  learntidymodels,
   mixOmics,
   modeldata,
   nnet,
@@ -59,3 +60,11 @@ Imports:
   xrf,
   yardstick
 License: CC BY 4.0
+Remotes:
+  tidymodels/dials,
+  tidymodels/modeldata,
+  tidymodels/parsnip,
+  tidymodels/recipes,
+  tidymodels/tune,
+  tidymodels/yardstick,
+  tidymodels/learntidymodels
