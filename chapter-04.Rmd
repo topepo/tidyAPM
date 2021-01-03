@@ -249,6 +249,8 @@ Finally, it should be noted that there are other methods of finding optimal para
 To learn more about Bayesian optimization and other iterative methods, [Chapter 14]() of `tmwr.org` goes into details on these methods. 
 :::
 
+When there are _no tuning parameters_, the `fit_resamples()` function is used and has almost the exact same syntax and output format. 
+
 ## Choosing Final Tuning Parameters
 
 There are several functions that choose the best parameter results, depending on your criterion. To select the numerically best results: 
