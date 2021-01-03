@@ -1,3 +1,5 @@
+# (PART\*) General Strategies {-}
+
 # A Short Tour of the Predictive Modeling Process
 
 ```{r chapter-02-startup, include = FALSE}
@@ -25,7 +27,7 @@ ls(pattern = "cars")
 
 The relationship between engine displacement and fuel efficiency of all 2010 model year vehicles and new 2011 car lines: 
 
-```{r chapter-02-fig-01}
+```{r chapter-02-fig-01, fig.height=4.5}
 cars2010 %>% 
  mutate(Year = "2010 Model Year") %>% 
  bind_rows(
@@ -42,7 +44,7 @@ cars2010 %>%
 ## Resampling the training set
 
 
-Create resampling folds for the 2010 data: 
+Create resampling folds for the 2010 data (described in more detail in Section \@reg(k-fold-cross-validation)): 
 
 ```{r chapter-02-folds}
 set.seed(121)
@@ -51,7 +53,7 @@ folds_2010 <- vfold_cv(cars2010)
 
 ## A simple linear regression model
 
-Fit a linear regression model with a single linear term for engine displacement:
+Fit a linear regression model with a single linear term for engine displacement, a model specification is created (Section \@ref(case-study-credit-scoring)) then evaluated across the resamples (Section \@ref(choosing-between-models)):
 
 ```{r chapter-02-linear-reg}
 # Setup the model type and use `lm()` to fit the model: 
@@ -101,7 +103,7 @@ fuel_plots <- function(resamples, fit) {
 }
 ```
 
- Quality of fit diagnostics for the linear regression model. The training set data and its associated predictions are used to understand how well the model works: 
+Quality of fit diagnostics for the linear regression model. The training set data and its associated predictions are used to understand how well the model works: 
  
 ```{r chapter-02-fig-02}
 fuel_plots(lm_lin_resamples, lm_lin_fit)
@@ -162,11 +164,11 @@ mars_tune <-
 
 The cross-validation profile for the MARS tuning parameter:
 
-```{r chapter-02-fig-04}
+```{r chapter-02-fig-04, fig.height=4.5}
 autoplot(mars_tune, metric = "rmse")
 ```
 
-Selecting the best tuning parameters: 
+Selecting the best tuning parameters (see Section \@ref(choosing-final-tuning-parameters)): 
 
 ```{r chapter-02-mars-paramters}
 # Show the top results:
@@ -193,7 +195,6 @@ mars_cuts <- mars_cuts[mars_cuts > 0]
 mars_cut_text <- knitr::combine_words(sort(mars_cuts))
 ```
 
-
 Quality of fit diagnostics for the MARS model (using the training set). The MARS model creates several linear regression fits with change points at `r mars_cut_text` L:
 
 
@@ -205,7 +206,7 @@ fuel_plots(mars_tune, mars_fit)
 
 The test set data and with model fits for two models: 
 
-```{r chapter-02-fig-06}
+```{r chapter-02-fig-06, fig.height=4.5}
 # Predict the test set using the two best models
 
 lm_quad_test_res <- 
@@ -229,7 +230,8 @@ lm_quad_test_res  %>%
  xlab("Engine Displacement") + 
  ylab("Fuel Efficiency (MPG)")
 ```
-The test set statistics:
+
+The test set RMSE statistics:
 
 ```{r chapter-02-test-stats}
 lm_quad_test_res %>% rmse(FE, .pred)
