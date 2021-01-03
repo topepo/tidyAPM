@@ -44,12 +44,12 @@ mixture_means <-
 The data splitting strategy is the same as _APM_ but different splits and resamples of the data are created (since the underlying code is different): 
 
 ```{r chapter-10-data-splitting}
-set.seed(1000)
+set.seed(1001)
 concrete_split <- initial_split(mixture_means, strata = compressive_strength)
 concrete_train <- training(concrete_split)
 concrete_test  <- testing(concrete_split)
 
-set.seed(1001)
+set.seed(1002)
 concrete_folds <- vfold_cv(concrete_train, strata = compressive_strength, 
                            repeats = 5)
 ```
@@ -188,7 +188,6 @@ race_ctrl <- control_race(save_pred = TRUE, parallel_over = "everything",
 all_workflows <- 
  bind_rows(no_pre_proc, normalized, with_features)
 
-set.seed(1002)
 workflow_fits <- 
  all_workflows %>% 
  filter(!(model %in% c("mlp"))) %>% 
@@ -202,7 +201,6 @@ nnet_param <-
  parameters() %>% 
  update(hidden_units = hidden_units(c(1, 27)))
 
-set.seed(1002)
 nnet_fit <- 
  all_workflows %>% 
  filter(model == "mlp") %>% 

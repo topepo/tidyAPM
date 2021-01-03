@@ -47,7 +47,7 @@ cars2010 %>%
 Create resampling folds for the 2010 data (described in more detail in Section \@reg(k-fold-cross-validation)): 
 
 ```{r chapter-02-folds}
-set.seed(121)
+set.seed(201)
 folds_2010 <- vfold_cv(cars2010)
 ```
 

@@ -35,12 +35,13 @@ german_credit <-
 
 ## Data Splitting
 
+
 The tidymodels analog to `caret:::createDataPartition()` is `rsample::initial_split()`. This function creates a split object that contains the row indices for the training and test sets. 
 
 ```{r chapter-04-initial-split}
 library(tidymodels)
 
-set.seed(1)
+set.seed(401)
 split <- initial_split(german_credit, strata = Class, prop = 0.8)
 ```
 
@@ -82,7 +83,7 @@ In tidymodels, the letter _V_ is used to denote folds (instead of _K_, which is 
 The `vfold_cv()` function creates a tibble that has _V_ rows. Each row corresponds to a different resample of the training set. For example, to make an object with 10 folds that uses stratified sampling: 
 
 ```{r chapter-04-cv}
-set.seed(2)
+set.seed(402)
 cv_10_fold <- vfold_cv(german_credit_train, v = 10, strata = Class)
 cv_10_fold
 ```
@@ -107,7 +108,7 @@ Each split object contains the original data but, despite this, no extra copies 
 For repeated cross-validation, use the `repeats` argument: 
 
 ```{r chapter-04-repeat-cv}
-set.seed(2)
+set.seed(402)
 cv_10_fold_reps <- vfold_cv(german_credit_train, v = 10, repeats = 5, strata = Class)
 cv_10_fold_reps
 ```
@@ -126,7 +127,7 @@ nrow(cv_loo) == nrow(german_credit_train)
 To use "leave-group-out" cross-validation, a.k.a. Monte Carlo cross-validation, use the `mc_cv()` function. The main arguments are `times` (the number of resamples) and `prop` (what proportion of data  used for modeling). There is also an optional stratification argument (`strata`). For example: 
 
 ```{r chapter-04-mc-cv}
-set.seed(2)
+set.seed(402)
 cv_mc <- mc_cv(german_credit_train, times = 50, prop = 0.8)
 ```
 
@@ -135,7 +136,7 @@ cv_mc <- mc_cv(german_credit_train, times = 50, prop = 0.8)
 Similarly, the `bootstraps()` function creates bootstrap resamples. Each produces an analysis set that is the same size as the training set. The number of samples in the assessment set varies. 
 
 ```{r chapter-04-boot}
-set.seed(2)
+set.seed(402)
 boots <- bootstraps(german_credit_train, times = 50)
 map_int(boots$splits, ~ nrow(assessment(.x))) %>% summary()
 ```
@@ -195,7 +196,7 @@ The code to tune these parameters with 10-fold cross-validation, using overall a
 
 
 ```{r chapter-04-svm-tune-10-fold, message = FALSE}
-set.seed(3)
+set.seed(403)
 svm_tune <- svm_wflow %>% tune_grid(cv_10_fold, grid = svm_grid)
 svm_tune
 ```
@@ -293,7 +294,7 @@ svm_wflow_final
 If this model was our best result, the next step is to evaluate it on the test set. If we first used `intial_split()` to create the training and test sets, there is a nice function that will fit the model on the entire training set and evaluate it on the test set:
 
 ```{r chapter-04-svm-final-fit}
-set.seed(4)
+set.seed(404)
 svm_wflow_test <- 
    svm_wflow_final %>% 
    last_fit(split = split)
@@ -309,7 +310,7 @@ svm_wflow_test$.workflow[[1]]
 If a split object does not exist, the same steps can be emulated:
 
 ```{r chapter-04-svm-final-fit-manual}
-set.seed(4)
+set.seed(405)
 svm_wflow_fit <- fit(svm_wflow_final, german_credit_train)
 
 test_pred <- 
@@ -365,9 +366,9 @@ accuracy_stats %>%
 ```
 
 Alternatively, a more sophisticated Bayesian analysis approach is available with the `r pkg(tidyposterior)` package. It creates a Bayesian model that compares the performance metrics. 
-```{r chapter-04-bayes, warning = FALSE}
+```{r chapter-04-bayes, warning = FALSE, cache = TRUE}
 library(tidyposterior)
-accuracy_model <- perf_mod(accuracy_stats, seed = 5, iter = 5000, refresh = 0)
+accuracy_model <- perf_mod(accuracy_stats, seed = 406, iter = 5000, refresh = 0)
 ```
 
 This creates a Stan model fit. 
@@ -391,7 +392,7 @@ There is a lot of overlap in these distributions so they are probably not differ
 
 ```{r chapter-04-contrast, message = FALSE}
 accuracy_diff <- 
-  contrast_models(accuracy_model, list_1 = "svm", list_2 = "logistic", seed = 6)
+  contrast_models(accuracy_model, list_1 = "svm", list_2 = "logistic", seed = 407)
 summary(accuracy_diff)
 ```
 

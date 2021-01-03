@@ -131,7 +131,7 @@ bag_cart_wflow <-
   add_model(bag_cart_spec) %>% 
   add_recipe(solubility_rec)
 
-set.seed(1292)
+set.seed(801)
 bag_cart_resamp <-
   bag_cart_wflow %>%
   fit_resamples(solubility_folds, control = rs_ctrl, metrics = rmse_stats)
@@ -160,7 +160,7 @@ rf_wflow <-
   add_model(rf_spec) %>% 
   add_recipe(solubility_rec)
 
-set.seed(4326)
+set.seed(801)
 rf_tune <-
   rf_wflow %>%
   tune_grid(solubility_folds, grid = 20, control = gd_ctrl, metrics = rmse_stats)
@@ -185,7 +185,7 @@ xgb_wflow <-
   add_model(xgb_spec) %>% 
   add_recipe(solubility_rec)
 
-set.seed(4415)
+set.seed(801)
 xgb_bo <-
   xgb_wflow %>%
   tune_bayes(
@@ -246,7 +246,7 @@ rulefit_param <-
   parameters() %>% 
   update(trees = trees(c(1, 100)))
 
-set.seed(445)
+set.seed(801)
 rulefit_bo <-
   rulefit_wflow %>%
   tune_bayes(

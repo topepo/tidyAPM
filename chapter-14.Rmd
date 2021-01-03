@@ -80,7 +80,7 @@ cart_wflow_set <-
   models =  list(cart = cart_spec),
   cross = TRUE
  ) %>% 
- workflow_map(resamples = grants_split, seed = 1301, grid = cart_grid,
+ workflow_map(resamples = grants_split, seed = 1401, grid = cart_grid,
               control = gd_ctrl, verbose = TRUE)
 ```
 

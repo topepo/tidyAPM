@@ -92,7 +92,7 @@ bo_ctrl <- control_bayes(save_pred = TRUE, verbose = TRUE,
                          parallel_over = "everything", 
                          save_workflow = TRUE)
 
-set.seed(123)
+set.seed(701)
 nnet_bo <-
  nnet_wflow %>%
  tune_bayes(
@@ -169,7 +169,7 @@ svm_r_wflow <-
   add_model(svm_r_spec) %>% 
   add_recipe(normalized_rec)
 
-set.seed(4983)
+set.seed(701)
 svm_r_tune <-
  svm_r_wflow %>%
  tune_grid(
@@ -185,7 +185,7 @@ autoplot(svm_r_tune)
 There appears to be a narrow range of `rbf_sigma()` values with good results. To do a better job, the grid search results above can be fed into another Bayesian optimization to probe the area of good performance: 
 
 ```{r chapter-07-svm-radial-bo, cache = caching, message = FALSE, fig.height=4}
-set.seed(4983)
+set.seed(702)
 svm_r_bo <-
  svm_r_wflow %>%
  tune_bayes(
@@ -219,7 +219,7 @@ svm_p_param <-
  parameters() %>% 
  update(degree = prod_degree())
 
-set.seed(762)
+set.seed(701)
 svm_p_tune <-
  svm_p_wflow %>%
  tune_grid(
@@ -257,7 +257,7 @@ knn_wflow <-
   add_model(knn_spec) %>% 
   add_recipe(normalized_rec)
 
-set.seed(205)
+set.seed(701)
 knn_tune <-
   knn_wflow %>%
   tune_grid(solubility_folds, grid = 25, control = gd_ctrl, metrics = rmse_stats)
