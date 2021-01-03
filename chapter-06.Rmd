@@ -243,7 +243,7 @@ pls_wflow <-
 
 Both models are processed using `tune_grid()` where up to 50 components are evaluated for each. 
 
-```{r chapter-06-feature-extract}
+```{r chapter-06-feature-extract, cache = TRUE}
 pcr_tune <-
   pcr_wflow %>% 
   tune_grid(
