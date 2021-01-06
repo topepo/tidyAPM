@@ -5,7 +5,7 @@
 knitr::opts_chunk$set(fig.path = "figures/")
 library(knitr)
 library(tidymodels)
-library(tbd)
+library(workflowsets)
 
 caching <- TRUE
 
@@ -34,13 +34,13 @@ load("RData/chapter_08.RData")
 # paste0("'", obj_name, "' = ", obj, collapse = ", ")
 ```
 
-In _APM_, this chapter gathers the results across all of the models created in Chapters 6, 7, and 8. It compares their performance metrics. We'll do the same here and introduce another R package. The R packages used in this chapter are: `r pkg_text(c("tidymodels", "rules", "Cubist", "tbd", "patchwork"))`. 
+In _APM_, this chapter gathers the results across all of the models created in Chapters 6, 7, and 8. It compares their performance metrics. We'll do the same here and introduce another R package. The R packages used in this chapter are: `r pkg_text(c("tidymodels", "rules", "Cubist", "workflowsets", "patchwork"))`. 
 
-The `r pkg(tbd)` package enables a method for collecting workflow into a _workflow set_. For our previous results, we can collect the objects with the results into a list then create a workflow set:
+The `r pkg(workflowsets)` package enables a method for collecting workflow into a _workflow set_. For our previous results, we can collect the objects with the results into a list then create a workflow set:
 
 ```{r chapter-09-collect}
 library(tidymodels)
-library(tbd)
+library(workflowsets)
 
 solubility_res <- 
   as_workflow_set(
@@ -54,9 +54,9 @@ solubility_res <-
 solubility_res
 ```
 
-The next chapter shows the real power of workflow sets: creating and evaluating them _en mass_. 
+The next chapter shows the real power of workflow sets: creating and evaluating them _en masse_. 
 
-The `r pkg(tbd)` package has some nice summary methods. `rank_results()` will list the model showing the best configurations based on a single metric. We only used RMSE here so there is no need to specify the ranking metric.
+The `r pkg(workflowsets)` package has some nice summary methods. `rank_results()` will list the model showing the best configurations based on a single metric. We only used RMSE here so there is no need to specify the ranking metric.
 
 ```{r chapter-09-summarize}
 rank_results(solubility_res)

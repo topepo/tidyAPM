@@ -110,7 +110,7 @@ Not only are the model and preprocessing actions defined in a single object, fit
 complaint_wf %>% fit(data = complaints_train)
 ```
 
-As previously mentioned, the process of finding the right model and features can involved a lot of attempts. Instead of creating a lot of objects, workflow set are methods of creating a series or collections of workflows that are processed with very few lines of code. This method, from the `r pkg(tbd)` package, is used throughout this website. 
+As previously mentioned, the process of finding the right model and features can involved a lot of attempts. Instead of creating a lot of objects, workflow set are methods of creating a series or collections of workflows that are processed with very few lines of code. This method, from the `r pkg(workflowsets)` package, is used throughout this website. 
 
 ### The `r pkg(rsample)` package
 

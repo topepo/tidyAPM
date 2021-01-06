@@ -6,7 +6,7 @@ The goal of these files is to approximate the analyses in the book with the more
 
 Some caveats:
 
- * **This** is a rough draft. It relies on a few devel versions and one experiemtnal package tyhat has not been made public yet (it is named `tbd`). 
+ * **This** is a rough draft. It relies on a few devel versions and one experimental package that has not been made public yet (it is named `workflowsets`). 
 
  * R uses a different random number generator than it did <= 2013, so results won't be exactly the same. 
 
@@ -23,4 +23,4 @@ Feel free to contribute by
 
 ## Code of Conduct
   
-Please note that the tidyAPM project is released with a [Contributor Code of Conduct](https://contributor-covenant.org/version/2/0/CODE_OF_CONDUCT.html). By contributing to this project, you agree to abide by its terms.
+Please note that the tidyAPM project is released with a [Contributor Code of Conduct](https://contributor-covenant.org/version/2/0/CODE_OF_CONDUCT.html). By contributing to this project, you agree to abide by its terms. 

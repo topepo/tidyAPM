@@ -7,7 +7,7 @@ library(mixOmics)
 library(plsmod)
 library(glmnet)
 library(tidymodels)
-library(tbd)
+library(workflowsets)
 library(discrim)
 
 caching <- TRUE
@@ -58,7 +58,7 @@ An initial simple logistic regression model is fit to the data. Two  recipes rem
 Since there are no tuning parameters, both recipes are simply resampled. A workflow set is used: 
 
 ```{r chapter-12-logistic, cache = caching}
-library(tbd)
+library(workflowsets)
 
 rs_ctrl <- control_resamples(save_pred = TRUE, save_workflow = TRUE, 
                              parallel_over = "everything")

@@ -3,7 +3,7 @@
 ```{r chapter-15-startup, include = FALSE}
 knitr::opts_chunk$set(fig.path = "figures/")
 library(tidymodels)
-library(tbd)
+library(workflowsets)
 
 caching <- TRUE
 
@@ -22,13 +22,13 @@ source("extras/overlay_roc_curves.R")
 
 
 The R packages used in this chapter are: `r pkg_text(c("tidymodels", "C50", "discrim", "earth",
-"tbd", "probably"))`. 
+"workflowsets", "probably"))`. 
 
 
 
 ```{r chapter-15-data}
 library(tidymodels)
-library(tbd)
+library(workflowsets)
 
 data(grants)
 
