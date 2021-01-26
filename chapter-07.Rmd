@@ -28,11 +28,11 @@ load("solubility_data.RData")
 solubility_rec <- 
   recipe(solubility ~ ., data = solubility_train) %>% 
   step_zv(all_predictors()) %>% 
-  step_YeoJohnson(all_predictors())
+  step_YeoJohnson(all_numeric_predictors())
 
 normalized_rec <- 
   solubility_rec %>% 
-  step_normalize(all_predictors())
+  step_normalize(all_numeric_predictors())
 
 solubility_wflw <- 
   workflow() %>% 

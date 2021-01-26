@@ -29,7 +29,7 @@ See `?tag_show` for other tag-related functions.
 
 Now let's look at some of the the primary tidymodels packages. 
 
-### The `r pkg(parsnip)` package
+### The parsnip package
 
 This package contains the infrastructure for defining and fitting models. One of the tidymodels philosophies is to separate the planning from the doing. For example, when you fit a model using `lm(formula, data)`, it defines the model to be fit and then fits it. There are some disadvantages to doing this and, in tidymodels, we first define models before fitting them. For example, a simple linear model _specification_ would be: 
 
@@ -52,7 +52,7 @@ Like `r pkg(caret)`, the underling `lm` object is saved in the `r pkg(parsnip)` 
 A full list of the models in `r pkg(parsnip)` and its ancillary packages is at [`tidymodels.org/find/parsnip/`](https://www.tidymodels.org/find/parsnip/). 
 
 
-### The `r pkg(recipes)` package
+### The recipes package
 
 tidymodels fully supports the standard R formula as well as the non-formula interface. There are some limitations imposed by these methods though. After rethinking the standard infrastructure for specifying variables and preprocessing them prior to modeling, the `r pkg(recipes)` package was born. 
 
@@ -70,7 +70,7 @@ Like `r pkg(parsnip)`, there are supplementary packages that contain additional 
 
 A list of all recipes steps across packages can be found at [`tidymodels.org/find/recipes/`](https://www.tidymodels.org/find/recipes/). 
 
-### The `r pkg(workflows)` package
+### The workflows package
 
 In the course of creating models, a variety of models and preprocessing steps might be evaluated before finding the best technique for the data at hand. An R script might have a lot of objects in them that have been combined. A workflow object is a way to bind specific models and preprocessors together so that projects can be better organized. As an example, [_Supervised Machine Learning for Text Analysis in R_](https://smltar.com/mlclassification.html#classfirstmodel) use the following recipe and model to build a classification model on consumer complaint data: 
 
@@ -112,7 +112,7 @@ complaint_wf %>% fit(data = complaints_train)
 
 As previously mentioned, the process of finding the right model and features can involved a lot of attempts. Instead of creating a lot of objects, workflow set are methods of creating a series or collections of workflows that are processed with very few lines of code. This method, from the `r pkg(workflowsets)` package, is used throughout this website. 
 
-### The `r pkg(rsample)` package
+### The rsample package
 
 `r pkg(rsample)` contains tools for resampling. It creates data frames that contain the resampled data (where each row of the data frame is a resample). `r pkg(caret)` embeds the resamples inside of the objects produced by `train()`, `rfe()` and other `r pkg(caret)` functions. `r pkg(rsample)` contains memory efficient objects with the resamples, and tidymodels functions work on these objects. 
 
@@ -133,7 +133,7 @@ as.numeric(lobstr::obj_size(boots)/lobstr::obj_size(mtcars))
 
 All of the information to reproduce the bootstrap sample, as well as the out-of-bag data, are contained in the `splits` column. There are simple functions to obtain these data frames. 
 
-### The `r pkg(tune)` package
+### The tune package
 
 This package uses almost all of the other tidymodels packages. tune contains tools for finding good values of any model tuning parameters (e.g. via grid search or Bayesian optimization). It also has tools for simply resampling models as well as finalizing the models and obtaining test set results. This package is most analogous to  `caret::train()`. It is heavily used in this website. 
 
@@ -193,8 +193,8 @@ while an equivalent recipe is more protracted:
 
 ```r
 recipe(y ~ ., data = training) %>% 
-  step_BoxCox(all_predictors()) %>% 
-  step_normalize(all_predictors())
+  step_BoxCox(all_numeric_predictors()) %>% 
+  step_normalize(all_numeric_predictors())
 ```
 
 In tidymodels, you get a huge improvement in available methodologies at the cost of slightly more complex code.  
@@ -243,7 +243,7 @@ Since so many packages are used, there are cases when two (or more) packages hav
 
 * We also rely on the `r pkg(conflicted)` package to pick the the package that we want most often. For example, the base R function `filter()` does univariate smoothing while the `r pkg(dplyr)` function of the same name selects specific rows of a data frame. Rather than writing `dplyr::filter()` everywhere, the `r pkg(conflicted)` package lets us choose the default package to use (irregardless of the order in which they were loaded). 
 
-To see the function prioritization used by `r pkg(conflicted)`, see the file called `_common.R`. When creating this book, this file is executed before each chapter. You should consider doing the same so that the settings are the same as ours. 
+To see the function prioritization used by `r pkg(conflicted)`, see the file called [`_common.R`](https://github.com/topepo/tidyAPM/blob/main/_common.R). When creating this book, this file is executed before each chapter. You should consider doing the same so that the settings are the same as ours. 
 
 Finally, many of these analyses take a long time to execute (particularly those using the grant data in the classification chapters). Please be aware of this. One way that we compensate for this is to use parallel processing. Since the website content is generated locally on `r osVersion` using a computer with 10 cores and a lot of memory. We use the `r pkg(doMC)` package for this (using all cores). This may not be an option for you. This package is not available on Windows; use the `r pkg(doParallel)` package instead. Also, if you use many cores, there may not be enough memory available since the parallel workers require as much memory as the main R process. 
 

@@ -53,7 +53,7 @@ use cart to show how to get dummy variables or not with trees
 library(workflowsets)
 tree_ind_rec <- 
  recipe(class ~ ., data = grants_other) %>% 
- step_dummy(all_nominal(), -class, one_hot = TRUE) %>% 
+ step_dummy(all_nominal_predictors(), one_hot = TRUE) %>% 
  step_zv(all_predictors())
 
 tree_vars <- selectors(outcomes = class, predictors = everything())

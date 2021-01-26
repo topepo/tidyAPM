@@ -70,7 +70,7 @@ When preprocessing data with `r pkg(caret)`, the default is to apply the same me
 ```{r chapter-03-center-scale}
 cell_rec <- 
  recipe(class ~ ., data = cell_train) %>% 
- step_normalize(all_predictors())
+ step_normalize(all_numeric_predictors())
 
 cell_rec
 ```
@@ -201,7 +201,7 @@ sp_sign_data <-
   select(var_1 = RDF025m, var_2 = RTp) %>% 
   filter(var_1 > 0) %>% 
   recipe(formula = ~ .) %>% 
-  step_log(all_predictors()) %>% 
+  step_log(all_numeric_predictors()) %>% 
   prep() %>% 
   bake(new_data = NULL)
 ```
@@ -235,13 +235,13 @@ The shapes and colors indicate which cells were poorly segmented or well segment
 ```{r chapter-03-pca-comps}
 bc_rec <- 
  recipe(class ~ avg_inten_ch_1 + entropy_inten_ch_1, data = cell_train) %>% 
- step_YeoJohnson(all_predictors()) %>% 
+ step_YeoJohnson(all_numeric_predictors()) %>% 
  prep()
 
 pca_rec <- 
  bc_rec %>% 
- step_normalize(all_predictors()) %>% 
- step_pca(all_predictors()) %>% 
+ step_normalize(all_numeric_predictors()) %>% 
+ step_pca(all_numeric_predictors()) %>% 
  prep()
 ```
 
@@ -274,9 +274,9 @@ To conduct PCA on the entire predictor set:
 ```{r chapter-03-fig-07, fig.height=7.5}
 all_pca_rec <- 
  recipe(class ~ ., data = cell_train) %>% 
- step_YeoJohnson(all_predictors()) %>% 
- step_normalize(all_predictors()) %>% 
- step_pca(all_predictors(), num_comp = 3, id = "pca") %>% 
+ step_YeoJohnson(all_numeric_predictors()) %>% 
+ step_normalize(all_numeric_predictors()) %>% 
+ step_pca(all_numeric_predictors(), num_comp = 3, id = "pca") %>% 
  prep()
 
 library(ggforce) # For a scatter plot matrix
@@ -349,7 +349,7 @@ with_missing$avg_inten_ch_1[missing_ind] <- NA
 
 basic_rec <- 
   recipe(class ~ ., data = cell_train) %>% 
-  step_YeoJohnson(all_predictors()) %>% 
+  step_YeoJohnson(all_numeric_predictors()) %>% 
   prep()
 
 real_results <-
@@ -400,7 +400,7 @@ There are a number of unsupervised filtering steps: `step_zv()`, `step_nzv()`, `
 ```{r chapter-03-linear-comb}
 filtered_rec <- 
     recipe(class ~ ., data = cell_train) %>% 
-    step_lincomb(all_predictors(), id = "nzv") %>% 
+    step_lincomb(all_numeric_predictors(), id = "nzv") %>% 
     prep()
 
 # One predictor was removed: 
@@ -416,7 +416,7 @@ The correlation plot shown in _APM_ is recreated using:
 ```{r chapter-03-fig-10}
 cell_trans_predictors <- 
  recipe(class ~ ., data = cell_train) %>% 
- step_YeoJohnson(all_predictors()) %>% 
+ step_YeoJohnson(all_numeric_predictors()) %>% 
  prep() %>% 
  bake(new_data = NULL, all_predictors())
 
@@ -430,7 +430,7 @@ To filter predictors using their pairwise, absolute correlations, `step_corr()` 
 ```{r chapter-03-corr}
 filtered_corr_rec <- 
     recipe(class ~ ., data = cell_train) %>% 
-    step_corr(all_predictors(), threshold = 0.5, id = "cor filter") %>% 
+    step_corr(all_numeric_predictors(), threshold = 0.5, id = "cor filter") %>% 
     prep()
 
 # Predictors removed: 
@@ -451,7 +451,7 @@ penguins <- na.omit(penguins)
 
 penguin_rec <- 
   recipe(~ ., data = penguins) %>% 
-  step_dummy(all_nominal()) %>% # <- captures factor or character cols
+  step_dummy(all_nominal_predictors()) %>% # <- captures factor or character cols
   prep()
 
 penguins %>% names()
@@ -467,7 +467,7 @@ The standard procedure (at least, in statistics) is to create $C - 1$ indicators
 ```{r chapter-03-one-hot}
 penguin_rec <- 
   recipe(~ ., data = penguins) %>% 
-  step_dummy(all_nominal(), one_hot = TRUE) %>% 
+  step_dummy(all_nominal_predictors(), one_hot = TRUE) %>% 
   prep()
 
 bake(penguin_rec, new_data = NULL) %>% names()
@@ -525,7 +525,7 @@ To use interactions with factor predictors, _you must first make indicators_ and
 ```{r chapter-03-interact}
 penguin_rec <- 
   recipe(~ ., data = penguins) %>%
-  step_dummy(all_nominal()) %>% 
+  step_dummy(all_nominal_predictors()) %>% 
   step_interact( ~ starts_with("island"):body_mass_g + 
                    bill_length_mm:bill_depth_mm) %>%
   prep()

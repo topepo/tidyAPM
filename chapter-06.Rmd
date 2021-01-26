@@ -80,7 +80,7 @@ To recreate Figure 3, a recipe with the Yeo-Johnson transformation is created:
 solubility_rec <- 
   recipe(solubility ~ ., data = solubility_train) %>% 
   step_zv(all_predictors()) %>% 
-  step_YeoJohnson(all_predictors())
+  step_YeoJohnson(all_numeric_predictors())
 ```
 
 The `prep()` function is used to estimate the transformation on the training set and `bake(new_data = NULL)` extracts the preprocessed training set. To make the plot, the predictor values are stacked using `tidyr::pivot_longer()` and then the plot is created: 
@@ -138,7 +138,7 @@ lin_reg_spec <- linear_reg() %>% set_engine("lm")
 
 lin_reg_rec <- 
   solubility_rec %>% 
-  step_corr(all_predictors(), threshold = 0.9)
+  step_corr(all_numeric_predictors(), threshold = 0.9)
 
 lin_reg_wflow <- 
   workflow() %>% 
@@ -176,7 +176,7 @@ gd_ctrl <- control_grid(save_pred = TRUE, parallel_over = "everything", save_wor
 
 lin_reg_tune_rec <- 
   solubility_rec %>% 
-  step_corr(all_predictors(), threshold = tune())
+  step_corr(all_numeric_predictors(), threshold = tune())
 
 lin_reg_tune_wflow <- 
   workflow() %>% 
@@ -212,8 +212,8 @@ For PCA, a recipe is used to compute the components and the number of components
 ```{r chapter-06-pcr}
 pcr_rec <- 
   solubility_rec %>% 
-  step_normalize(all_predictors()) %>% 
-  step_pca(all_predictors(), num_comp = tune())
+  step_normalize(all_numeric_predictors()) %>% 
+  step_pca(all_numeric_predictors(), num_comp = tune())
 
 pcr_wflow <- 
   workflow() %>% 
@@ -233,7 +233,7 @@ pls_spec <-
 
 normalized_rec <- 
   solubility_rec %>% 
-  step_normalize(all_predictors())
+  step_normalize(all_numeric_predictors())
 
 pls_wflow <- 
   workflow() %>% 

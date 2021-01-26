@@ -65,12 +65,12 @@ rs_ctrl <- control_resamples(save_pred = TRUE, save_workflow = TRUE,
 
 zv_rec <- 
  recipe(class ~ ., data = grants_other) %>% 
- step_dummy(all_nominal(), -class) %>% 
+ step_dummy(all_nominal_predictors()) %>% 
  step_zv(all_predictors())
 
 nzv_rec <- 
  recipe(class ~ ., data = grants_other) %>% 
- step_dummy(all_nominal(), -class) %>% 
+ step_dummy(all_nominal_predictors()) %>% 
  step_nzv(all_predictors())
 
 logistic_spec <-

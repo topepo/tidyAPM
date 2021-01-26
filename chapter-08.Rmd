@@ -30,11 +30,11 @@ load("solubility_data.RData")
 solubility_rec <- 
   recipe(solubility ~ ., data = solubility_train) %>% 
   step_zv(all_predictors()) %>% 
-  step_YeoJohnson(all_predictors())
+  step_YeoJohnson(all_numeric_predictors())
 
 normalized_rec <- 
   solubility_rec %>% 
-  step_normalize(all_predictors())
+  step_normalize(all_numeric_predictors())
 
 solubility_wflw <- 
   workflow() %>% 
@@ -241,30 +241,32 @@ rulefit_wflow <-
   add_model(rulefit_spec) %>% 
   add_recipe(solubility_rec)
 
-rulefit_param <- 
-  rulefit_wflow %>% 
-  parameters() %>% 
-  update(trees = trees(c(1, 100)))
+set.seed(0801)
+rulefit_grid <-
+ rulefit_spec %>% 
+ parameters() %>% 
+ filter(name != "penalty") %>% 
+ grid_max_entropy(size = 20)
+
+rulefit_grid <- 
+ crossing(
+  rulefit_grid,
+  tibble(penalty = 10^seq(-10, 0, length.out = 10))
+ )
 
 set.seed(801)
-rulefit_bo <-
+rulefit_tune <-
   rulefit_wflow %>%
-  tune_bayes(
-    solubility_folds,
-    param_info = rulefit_param,
-    initial = 10,
-    iter = 15,
-    control = bo_ctrl, 
-    metrics = rmse_stats
-  )
+  tune_grid(solubility_folds, grid = rulefit_grid, control = gd_ctrl, metrics = rmse_stats)
 
-autoplot(rulefit_bo, type = "performance")
+
+autoplot(rulefit_tune)
 ```
 
 The top results for RuleFit are: 
 
 ```{r chapter-08-rule-fit-best}
-show_best(rulefit_bo)
+show_best(rulefit_tune)
 ```
 
 ```{r chapter-08-teardown, include = FALSE}

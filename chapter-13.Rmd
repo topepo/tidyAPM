@@ -56,9 +56,9 @@ For a fixed number of epochs, the number of hidden units and weight decay are op
 ```{r chapter-13-nnet, cache = caching}
 norm_nzv_rec <- 
  recipe(class ~ ., data = grants_other) %>% 
- step_dummy(all_nominal(), -class) %>% 
+ step_dummy(all_nominal_predictors()) %>% 
  step_nzv(all_predictors()) %>% 
- step_normalize(all_predictors())
+ step_normalize(all_numeric_predictors())
 
 mlp_spec <- 
  mlp(hidden_units = tune(), penalty = tune(), epochs = 2000) %>% 
@@ -203,9 +203,9 @@ These models are crossed with both filtering strategies:
 ```{r chapter-13-svm, cache = caching}
 norm_zv_rec <- 
  recipe(class ~ ., data = grants_other) %>% 
- step_dummy(all_nominal(), -class) %>% 
+ step_dummy(all_nominal_predictors()) %>% 
  step_zv(all_predictors()) %>% 
- step_normalize(all_predictors())
+ step_normalize(all_numeric_predictors())
 
 svm_r_spec <- 
  svm_rbf(cost = tune(), rbf_sigma = tune()) %>% 
@@ -308,9 +308,9 @@ overlay_roc_curves(model_predictions, highlight = "nzv_svm_rbf")
 ```{r chapter-13-knn, cache = caching}
 norm_nzv_rec <- 
  recipe(class ~ ., data = grants_other) %>% 
- step_dummy(all_nominal(), -class) %>% 
+ step_dummy(all_nominal_predictors()) %>% 
  step_nzv(all_predictors()) %>% 
- step_normalize(all_predictors())
+ step_normalize(all_numeric_predictors())
 
 knn_spec <- 
  nearest_neighbor(neighbors = tune(), weight_func = tune(), dist_power = tune()) %>% 

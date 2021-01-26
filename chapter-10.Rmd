@@ -61,13 +61,14 @@ We create two recipes. Once does not feature engineering and simple centers and 
 ```{r chapter-10-recipes}
 normalized_rec <- 
  recipe(compressive_strength ~ ., data = concrete_train) %>% 
- step_normalize(all_predictors()) 
+ step_normalize(all_numeric_predictors()) 
 
 poly_recipe <- 
  normalized_rec %>% 
- step_interact(~ all_predictors():all_predictors()) %>% 
+ step_interact(~ all_numeric_predictors():all_numeric_predictors()) %>% 
  step_poly(cement, blast_furnace_slag, fly_ash, water, superplasticizer, 
-           coarse_aggregate, fine_aggregate, age)
+           coarse_aggregate, fine_aggregate, age) + 
+  step_interact(~ all_numeric_predictors():all_numeric_predictors())
 ```
 
 Next, a long list of model specifications are created. 
