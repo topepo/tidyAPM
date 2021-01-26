@@ -74,6 +74,39 @@ autoplot(solubility_res, select_best = TRUE) +
  theme(legend.position = "right")
 ```
 
+This produces 90% confidence intervals for the RMSE estimates. Alternatively, a more statistically sophisticated approach to comparing these models is to use the `r pkg(tidyposterior)` package. It fits a Bayesian ANOVA model to the RMSE estimates from the resampling process and can make more formal probabilistic comparisons between models. The `perf_mod()` function, when applied to workflow sets, takes the best submodel from each workflow. To make the results a little more conservative we'll use a prior (a 1-df _t_) with heavier tails than the default Gaussian. 
+
+
+```{r chapter-09-tidy-post}
+library(tidyposterior)
+rmse_mod <-
+ perf_mod(
+  solubility_res,
+  prior_intercept = rstanarm::student_t(1),
+  # MCMC parameters:
+  chains = 8,
+  cores = 8,
+  iter = 5000,
+  seed = 1,
+  # Don't print excessive output
+  refresh = 0
+ )
+```
+
+The regular `autoplot()` method produces 90% _credible intervals_. These are intervals that have a 90% probability of containing the true RMSE for the model. The results are fairly similar to the previous analysis: 
+
+```{r chapter-09-tidy-post-plot}
+autoplot(rmse_mod) 
+```
+
+One nice thing about the Bayesian analysis is that we can compute some interesting probability estimates. For example, suppose we believe that, irregardless of these results, a difference of 0.1 RMSE units would be a real/important difference between models. From this user-defined value, we can compute the probability that the model performance is equal to the best model in the workflow set: 
+
+```{r chapter-09-tidy-post-rope}
+autoplot(rmse_mod, type = "ROPE", size = 0.1) 
+```
+
+Arguably, the first 2-4 models have effectively equal performance based on this practical effect size. 
+
 Suppose we settled on a Cubist model. The next steps would be to
 
  1. Select the final tuning parameters.
