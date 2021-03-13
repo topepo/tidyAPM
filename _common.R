@@ -95,14 +95,15 @@ is_new_version <- function(x, path) {
 
 library(conflicted)
 
-conflict_prefer("filter", winner = "dplyr",   quiet = TRUE)
-conflict_prefer("select", winner = "dplyr",   quiet = TRUE)
-conflict_prefer("slice",  winner = "dplyr",   quiet = TRUE)
-conflict_prefer("rename", winner = "dplyr",   quiet = TRUE)
-conflict_prefer("step",   winner = "recipes", quiet = TRUE)
-conflict_prefer("tune",   winner = "tune",    quiet = TRUE)
-conflict_prefer("pls",    winner = "plsmod",  quiet = TRUE)
-conflict_prefer("map",    winner = "purrr",   quiet = TRUE)
+conflict_prefer("filter",     winner = "dplyr",    quiet = TRUE)
+conflict_prefer("select",     winner = "dplyr",    quiet = TRUE)
+conflict_prefer("slice",      winner = "dplyr",    quiet = TRUE)
+conflict_prefer("rename",     winner = "dplyr",    quiet = TRUE)
+conflict_prefer("step",       winner = "recipes",  quiet = TRUE)
+conflict_prefer("tune",       winner = "tune",     quiet = TRUE)
+conflict_prefer("pls",        winner = "plsmod",   quiet = TRUE)
+conflict_prefer("map",        winner = "purrr",    quiet = TRUE)
+conflict_prefer("class_cost", winner = "baguette", quiet = TRUE)
 
 # ------------------------------------------------------------------------------
 
