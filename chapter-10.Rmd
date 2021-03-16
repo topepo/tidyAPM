@@ -37,8 +37,7 @@ mixture_means <-
  summarize(
   compressive_strength = mean(compressive_strength), 
   .groups = "drop"
- ) %>% 
- ungroup()
+ )
 ```
 
 The data splitting strategy is the same as _APM_ but different splits and resamples of the data are created (since the underlying code is different): 
@@ -60,85 +59,90 @@ We create two recipes. Once does not feature engineering and simple centers and 
 
 ```{r chapter-10-recipes}
 normalized_rec <- 
- recipe(compressive_strength ~ ., data = concrete_train) %>% 
- step_normalize(all_numeric_predictors()) 
+  recipe(compressive_strength ~ ., data = concrete_train) %>% 
+  step_normalize(all_numeric_predictors()) 
 
 poly_recipe <- 
- normalized_rec %>% 
- step_interact(~ all_numeric_predictors():all_numeric_predictors()) %>% 
- step_poly(cement, blast_furnace_slag, fly_ash, water, superplasticizer, 
-           coarse_aggregate, fine_aggregate, age) + 
+  normalized_rec %>% 
+  step_interact(~ all_numeric_predictors():all_numeric_predictors()) %>% 
+  step_poly(cement, blast_furnace_slag, fly_ash, water, superplasticizer, 
+            coarse_aggregate, fine_aggregate, age) %>% 
   step_interact(~ all_numeric_predictors():all_numeric_predictors())
 ```
 
-Next, a long list of model specifications are created. 
+Next, a long list of model specifications are created. The [`parsnip` RStudio add-in](https://parsnip.tidymodels.org/reference/parsnip_addin.html) is an efficient way of creating many specification s quickly. 
 
 ```{r chapter-10-models}
 linear_reg_spec <- 
- linear_reg(penalty = tune(), mixture = tune()) %>% 
- set_engine("glmnet")
+  linear_reg(penalty = tune(), mixture = tune()) %>% 
+  set_engine("glmnet")
 
 nnet_spec <- 
- mlp(hidden_units = tune(), penalty = tune(), epochs = tune()) %>% 
- set_engine("nnet", MaxNWts = 2600) %>% 
- set_mode("regression")
+  mlp(hidden_units = tune(), penalty = tune(), epochs = tune()) %>% 
+  set_engine("nnet", MaxNWts = 2600) %>% 
+  set_mode("regression")
+
+nnet_param <- 
+  nnet_spec %>% 
+  parameters() %>% 
+  update(hidden_units = hidden_units(c(1, 27)))
 
 mars_spec <- 
- mars(prod_degree = tune()) %>%  #<- use GCV to choose terms
- set_engine("earth") %>% 
- set_mode("regression")
+  mars(prod_degree = tune()) %>%  #<- use GCV to choose terms
+  set_engine("earth") %>% 
+  set_mode("regression")
 
 svm_r_spec <- 
- svm_rbf(cost = tune(), rbf_sigma = tune()) %>% 
- set_engine("kernlab") %>% 
- set_mode("regression")
+  svm_rbf(cost = tune(), rbf_sigma = tune()) %>% 
+  set_engine("kernlab") %>% 
+  set_mode("regression")
 
 svm_p_spec <- 
- svm_poly(cost = tune(), degree = tune()) %>% 
- set_engine("kernlab") %>% 
- set_mode("regression")
+  svm_poly(cost = tune(), degree = tune()) %>% 
+  set_engine("kernlab") %>% 
+  set_mode("regression")
 
 knn_spec <- 
- nearest_neighbor(neighbors = tune(), dist_power = tune(), weight_func = tune()) %>% 
- set_engine("kknn") %>% 
- set_mode("regression")
+  nearest_neighbor(neighbors = tune(), dist_power = tune(), weight_func = tune()) %>% 
+  set_engine("kknn") %>% 
+  set_mode("regression")
 
 cart_spec <- 
- decision_tree(cost_complexity = tune(), min_n = tune()) %>% 
- set_engine("rpart") %>% 
- set_mode("regression")
+  decision_tree(cost_complexity = tune(), min_n = tune()) %>% 
+  set_engine("rpart") %>% 
+  set_mode("regression")
 
 bag_cart_spec <- 
- bag_tree() %>% 
- set_engine("rpart", times = 50L) %>% 
- set_mode("regression")
+  bag_tree() %>% 
+  set_engine("rpart", times = 50L) %>% 
+  set_mode("regression")
 
 rf_spec <- 
- rand_forest(mtry = tune(), min_n = tune(), trees = 1000) %>% 
- set_engine("ranger") %>% 
- set_mode("regression")
+  rand_forest(mtry = tune(), min_n = tune(), trees = 1000) %>% 
+  set_engine("ranger") %>% 
+  set_mode("regression")
 
 xgb_spec <- 
- boost_tree(tree_depth = tune(), learn_rate = tune(), loss_reduction = tune(), 
-            min_n = tune(), sample_size = tune(), trees = tune()) %>% 
- set_engine("xgboost") %>% 
- set_mode("regression")
+  boost_tree(tree_depth = tune(), learn_rate = tune(), loss_reduction = tune(), 
+             min_n = tune(), sample_size = tune(), trees = tune()) %>% 
+  set_engine("xgboost") %>% 
+  set_mode("regression")
 
 cubist_spec <- 
- cubist_rules(committees = tune(), neighbors = tune()) %>% 
- set_engine("Cubist") 
+  cubist_rules(committees = tune(), neighbors = tune()) %>% 
+  set_engine("Cubist") 
 ```
 
 The `workflow_set()` function creates combinations of these objects. First, a set of models that require no preprocessing are created using a simple formula: 
 
 ```{r chapter-10-make-workflows}
 no_pre_proc <- 
- workflow_set(
-  preproc = list(simple = compressive_strength ~ .), 
-  models = list(MARS = mars_spec, CART = cart_spec, 'CART (bagged)' = bag_cart_spec,
-                RF = rf_spec, boosting = xgb_spec, Cubist = cubist_spec),
-  cross = TRUE
- )
+  workflow_set(
+    preproc = list(simple = compressive_strength ~ .), 
+    models = list(MARS = mars_spec, CART = cart_spec, CART_bagged = bag_cart_spec,
+                  RF = rf_spec, boosting = xgb_spec, Cubist = cubist_spec),
+    cross = TRUE
+  )
 no_pre_proc
 ```
 
@@ -146,23 +150,23 @@ Next, another set is made for the models that require normalization (and nothing
 
 ```{r chapter-10-norm-workflows}
 normalized <- 
- workflow_set(
-  preproc = list(normalized = normalized_rec), 
-  models = list('SVM (radial)' = svm_r_spec, 'SVM (poly)' = svm_p_spec, 
-                KNN = knn_spec, 'neural network' = nnet_spec),
-  cross = TRUE
- )
+  workflow_set(
+    preproc = list(normalized = normalized_rec), 
+    models = list(svm_radial = svm_r_spec, svm_poly = svm_p_spec, 
+                  KNN = knn_spec, neural_network = nnet_spec),
+    cross = TRUE
+  )
 ```
 
 Finally, we combine the models that might benefit from the interactions and nonlinear terms with the appropriate recipe. 
 
 ```{r chapter-10-quad-workflows}
 with_features <- 
- workflow_set(
-  preproc = list(full_quad = poly_recipe), 
-  models = list('linear reg' = linear_reg_spec, KNN = knn_spec),
-  cross = TRUE
- )
+  workflow_set(
+    preproc = list(full_quad = poly_recipe), 
+    models = list('linear reg' = linear_reg_spec, KNN = knn_spec),
+    cross = TRUE
+  )
 ```
 
 From here, there are a few approaches. If grid search is acceptable for all of these models, the workflow sets could be combined using `bind_rows()` and the `workflow_map()` function can be used to automate that process. However, there are some cases where we would avoid that procedure: 
@@ -181,39 +185,19 @@ We'll set the control function to start the interim analysis after the first fiv
 
 When using the `workflow_map()` function, the same function is applied to the workflows of interest. Here, the `finetune::tune_race_anova()` is used for the largest batch of runs. The `seed` argument controls the random number stream so that each model with is processed with this random number seed. 
 
-```{r chapter-10-workflow-fits, message = FALSE, cache = caching}
+```{r chapter-10-workflow-fits, message = TRUE, cache = caching}
 library(finetune)
 race_ctrl <- control_race(save_pred = TRUE, parallel_over = "everything", 
-                          burn_in = 5)
+                          burn_in = 5, save_workflow = TRUE)
 
 all_workflows <- 
- bind_rows(no_pre_proc, normalized, with_features)
+  bind_rows(no_pre_proc, normalized, with_features) %>% 
+  option_add(param_info = nnet_param, id = "normalized_neural_network")
 
 workflow_fits <- 
- all_workflows %>% 
- filter(!(model %in% c("mlp"))) %>% 
- workflow_map(fn = "tune_race_anova", seed = 1003, 
-              resamples = concrete_folds, grid = 50, control = race_ctrl)
-
-# ------------------------------------------------------------------------------
-
-nnet_param <- 
- nnet_spec %>% 
- parameters() %>% 
- update(hidden_units = hidden_units(c(1, 27)))
-
-nnet_fit <- 
- all_workflows %>% 
- filter(model == "mlp") %>% 
- workflow_map(fn = "tune_race_anova", seed = 1003, 
-              resamples = concrete_folds, grid = 50, control = race_ctrl, 
-              param_info = nnet_param)
-
-# ------------------------------------------------------------------------------
-
-workflow_fits <- 
- workflow_fits %>% 
- bind_rows(nnet_fit)
+  all_workflows %>% 
+  workflow_map(fn = "tune_race_anova", seed = 1003, verbose = TRUE,
+               resamples = concrete_folds, grid = 25, control = race_ctrl)
 ```
 
 To get a quick assessment of the results, the `autoplot()` function can be used: 
@@ -223,16 +207,16 @@ To get a quick assessment of the results, the `autoplot()` function can be used:
 autoplot(workflow_fits, rank_metric = "rmse", metric = "rmse")
 ```
 
-There is a fair number of differences between the models, which is most likely due to using five repeats of cross-validation. Let's look at the Cubist results since it would have better extrapolation prperties than the high performaning tree-based models. 
+There is a fair number of differences between the models, which is most likely due to using five repeats of cross-validation. Let's look at the Cubist results since it would have better extrapolation properties than the high performing tree-based models. 
 
 ```{r chapter-10-cb, message = FALSE}
-cb_tune <- pull_workflow_result(workflow_fits, id = "simple_Cubist")
+cb_tune <- pull_workflow_set_result(workflow_fits, id = "simple_Cubist")
 cb_best <- select_best(cb_tune, metric = "rmse")
 cb_best
 regression_plots(cb_tune, parameters = cb_best)
 ```
 
-We can finalize the model and refit ont eh entire training set. 
+We can finalize the model and refit on the entire training set. 
 
 ```{r chapter-10-cb-fit, message = FALSE}
 cb_final_wflow <- 
@@ -255,7 +239,7 @@ concrete_pred <- function(x, mod) {
     return(10^38)
   } 
   x <- c(x, 1 - sum(x))
-
+  
   tmp <- as.data.frame(t(x))
   names(tmp) <- names(mixture_means)[1:7]
   tmp$age <- 28
@@ -308,5 +292,14 @@ opt_results %>%
   mutate(water = 1 - sum(c_across(cement:fine_aggregate)))
 ```
 
+
+```{r chapter-10-teardown, include = FALSE}
+if (grepl("mingw32", R.Version()$platform)) {
+ stopCluster(cl)
+} 
+
+save(concrete_test, workflow_fits, cb_res,
+     version = 2, compress = "xz", file = "RData/chapter_10.RData")
+```
 
 
